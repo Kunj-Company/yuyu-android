@@ -11,13 +11,17 @@ plugins {
  */
 val appLinkHost: String = providers.gradleProperty("yuyu.appLinkHost").getOrElse("yuyu.idliapps.com")
 
+// CI passes the run number and tag so every build has a unique, increasing version.
+val yuyuVersionCode: Int = providers.gradleProperty("yuyu.versionCode").map(String::toInt).getOrElse(1)
+val yuyuVersionName: String = providers.gradleProperty("yuyu.versionName").getOrElse("0.1.0")
+
 android {
     namespace = "com.twilighty.yuyu"
 
     defaultConfig {
         applicationId = "com.twilighty.yuyu"
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = yuyuVersionCode
+        versionName = yuyuVersionName
         manifestPlaceholders["yuyuHost"] = appLinkHost
     }
 
