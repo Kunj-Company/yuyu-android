@@ -71,10 +71,18 @@ interface CheckInRepository {
     suspend fun rosterInfo(eventId: String): RosterInfo
     fun observeRoster(eventId: String): Flow<List<OfflineGuest>>
     suspend fun findOfflineByCode(eventId: String, rawInput: String): OfflineGuest?
+    suspend fun findOfflineByRsvp(eventId: String, rsvpId: String): OfflineGuest?
     suspend fun searchOffline(eventId: String, query: String): List<OfflineGuest>
 
     /** Records an offline check-in, marks the roster row and schedules a background sync. */
     suspend fun recordOfflineCheckIn(orgSlug: String, eventId: String, rsvpId: String, force: Boolean = false)
+
+    /**
+     * Undo for an offline check-in that hasn't synced yet: drops it from the
+     * queue and clears the roster mark. Returns false when nothing was queued
+     * for [rsvpId] (it already synced, so undo it online instead).
+     */
+    suspend fun undoOfflineCheckIn(eventId: String, rsvpId: String): Boolean
     fun observePending(eventId: String): Flow<List<PendingCheckInEntity>>
     fun observePendingCount(): Flow<Int>
 
@@ -155,6 +163,9 @@ class CheckInRepositoryImpl @Inject constructor(
         return rosterDao.findByTokenHash(eventId, sha256Hex(token))?.toOffline()
     }
 
+    override suspend fun findOfflineByRsvp(eventId: String, rsvpId: String): OfflineGuest? =
+        rosterDao.find(eventId, rsvpId)?.toOffline()
+
     override suspend fun searchOffline(eventId: String, query: String): List<OfflineGuest> =
         rosterDao.search(eventId, query.trim()).map { it.toOffline() }
 
@@ -173,6 +184,13 @@ class CheckInRepositoryImpl @Inject constructor(
         )
         rosterDao.markCheckedIn(eventId, rsvpId, now.toString())
         syncScheduler.schedule()
+    }
+
+    override suspend fun undoOfflineCheckIn(eventId: String, rsvpId: String): Boolean {
+        if (pendingDao.forEvent(eventId).none { it.rsvpId == rsvpId }) return false
+        pendingDao.remove(eventId, listOf(rsvpId))
+        rosterDao.markCheckedIn(eventId, rsvpId, null)
+        return true
     }
 
     override fun observePending(eventId: String) = pendingDao.observeForEvent(eventId)
