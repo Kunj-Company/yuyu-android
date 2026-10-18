@@ -6,6 +6,7 @@ import com.twilighty.yuyu.core.common.result.AppResult
 import com.twilighty.yuyu.core.common.result.map
 import com.twilighty.yuyu.core.common.result.onSuccess
 import com.twilighty.yuyu.core.data.server.ServerStore
+import com.twilighty.yuyu.core.data.session.LocalDataCleaner
 import com.twilighty.yuyu.core.data.session.SessionStore
 import com.twilighty.yuyu.core.data.session.StoredSession
 import com.twilighty.yuyu.core.database.YuyuDatabase
@@ -89,6 +90,7 @@ class AuthRepositoryImpl @Inject constructor(
     private val serverStore: ServerStore,
     private val database: YuyuDatabase,
     @param:BareClient private val bareClient: OkHttpClient,
+    private val cleaners: Set<@JvmSuppressWildcards LocalDataCleaner>,
 ) : AuthRepository {
 
     private val initialized = MutableStateFlow(false)
@@ -183,6 +185,8 @@ class AuthRepositoryImpl @Inject constructor(
     private suspend fun clearLocalData() {
         sessionStore.clear()
         withContext(Dispatchers.IO) { database.clearAllTables() }
+        // One feature's failure must never leave another feature's data behind.
+        for (cleaner in cleaners) runCatching { cleaner.clear() }
     }
 
     private fun deviceName(): String =
