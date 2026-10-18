@@ -5,6 +5,7 @@ import com.twilighty.yuyu.core.common.result.AppResult
 import com.twilighty.yuyu.core.network.model.RegistrationDto
 import com.twilighty.yuyu.core.network.model.RegistrationsDto
 import com.twilighty.yuyu.feature.attendee.reminders.PlannedReminder
+import com.twilighty.yuyu.feature.attendee.reminders.ReminderCleaner
 import com.twilighty.yuyu.feature.attendee.reminders.ReminderKind
 import com.twilighty.yuyu.feature.attendee.reminders.ReminderPlanner
 import com.twilighty.yuyu.feature.attendee.reminders.ReminderScheduler
@@ -166,5 +167,17 @@ class RemindersTest {
         assertEquals(listOf(confirmed.rsvpId), me.cancelled)
         assertEquals(before + 1, me.registrationCalls)
         assertEquals(null, vm.uiState.value.cancelTarget)
+    }
+
+    @Test
+    fun `signing out cancels every scheduled reminder`() = runTest {
+        val work = FakeReminderWork()
+        val now = Instant.parse("2030-01-01T10:00:00Z")
+        listOf("r1", "r2").forEach { id ->
+            ReminderKind.entries.forEach { kind -> work.schedule(PlannedReminder(id, kind, now.plus(kind.before)), 1_000) }
+        }
+        ReminderCleaner(work).clear()
+        assertTrue(work.scheduled.isEmpty())
+        assertEquals(4, work.cancelledNames.size)
     }
 }
