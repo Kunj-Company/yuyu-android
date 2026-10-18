@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window theme behind Compose (YuyuTheme draws everything else). -->
+    <style name="Theme.Yuyu" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/yuyu_canvas</item>
+    </style>
+
+    <style name="Theme.Yuyu.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/yuyu_canvas</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_mark</item>
+        <item name="postSplashScreenTheme">@style/Theme.Yuyu</item>
+    </style>
+</resources>
