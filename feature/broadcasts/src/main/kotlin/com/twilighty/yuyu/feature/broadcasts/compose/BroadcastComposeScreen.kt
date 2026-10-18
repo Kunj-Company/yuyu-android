@@ -298,7 +298,7 @@ private fun ComposeForm(
                 selectedIndex = BroadcastCopy.ATTENDANCE.indexOf(state.attendance).coerceAtLeast(0),
                 onSelect = { if (editable) viewModel.setAttendance(BroadcastCopy.ATTENDANCE[it]) },
             )
-            RecipientLine(state)
+            RecipientLine(state, onRetry = viewModel::retryCount)
             state.audienceError?.let { Text(it, style = YuyuTheme.typography.caption, color = c.dangerFg) }
         }
 
@@ -375,7 +375,7 @@ private fun ComposeForm(
 }
 
 @Composable
-private fun RecipientLine(state: BroadcastComposeUiState) {
+private fun RecipientLine(state: BroadcastComposeUiState, onRetry: () -> Unit) {
     val c = YuyuTheme.colors
     Column(
         Modifier
@@ -388,7 +388,10 @@ private fun RecipientLine(state: BroadcastComposeUiState) {
     ) {
         when (val count = state.count) {
             RecipientCount.Counting -> Text("Counting recipients…", style = YuyuTheme.typography.bodyUi, color = c.textSecondary)
-            is RecipientCount.Failed -> Text(count.message, style = YuyuTheme.typography.bodyUi, color = c.dangerFg)
+            is RecipientCount.Failed -> {
+                Text(count.message, style = YuyuTheme.typography.bodyUi, color = c.dangerFg)
+                YuyuButton("Count again", onRetry, variant = YuyuButtonVariant.Quiet)
+            }
             is RecipientCount.Ready -> {
                 Text(BroadcastCopy.recipientLine(count.count), style = YuyuTheme.typography.bodyUiMedium, color = c.text)
                 if (count.count > 0) {

@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -142,6 +143,8 @@ class BroadcastComposeViewModel @Inject constructor(
     private data class Audience(val statuses: Set<String>, val attendance: String)
 
     private val audience = MutableStateFlow(Audience(state.value.statuses, state.value.attendance))
+    /** Bumped to recount an unchanged audience (retry, or a template with the same audience). */
+    private val recountRequests = MutableStateFlow(0)
     private val draftVersion = MutableStateFlow(0)
     private var ready = false
     private var restoredDraft = false
@@ -154,7 +157,11 @@ class BroadcastComposeViewModel @Inject constructor(
             if (state.value.bodyError != null) state.update { it.copy(bodyError = null) }
             onDraftChanged()
         }
-        viewModelScope.launch { audience.collectLatest { recount(it) } }
+        viewModelScope.launch {
+            // StateFlow drops equal values, so an unchanged audience alone would never
+            // retry a failed count; recountRequests forces a fresh request.
+            combine(audience, recountRequests) { target, _ -> target }.collectLatest { recount(it) }
+        }
         viewModelScope.launch {
             draftVersion.collectLatest { version ->
                 if (version == 0) return@collectLatest
@@ -202,6 +209,8 @@ class BroadcastComposeViewModel @Inject constructor(
                         baseline = subject.text to editor.html
                     }
                 }
+                // The count races the meta load; if it failed while the server was unreachable, retry now.
+                if (state.value.count is RecipientCount.Failed) retryCount()
             }
             is AppResult.Failure -> state.update { it.copy(metaLoading = false, metaError = result.error.message) }
         }
@@ -326,6 +335,7 @@ class BroadcastComposeViewModel @Inject constructor(
             )
         }
         audience.value = Audience(statuses, template.audience.attendance)
+        if (state.value.count is RecipientCount.Failed) retryCount()
         baseline = subject.text to editor.html
         onDraftChanged()
     }
@@ -349,11 +359,17 @@ class BroadcastComposeViewModel @Inject constructor(
             )
         }
         audience.value = Audience(statuses, row.audience.attendance)
+        if (state.value.count is RecipientCount.Failed) retryCount()
         baseline = subject.text to editor.html
         onDraftChanged()
     }
 
     // ------------------------------------------------------------------ count
+
+    /** Retry the recipient count, e.g. after a dropped connection. */
+    fun retryCount() {
+        recountRequests.update { it + 1 }
+    }
 
     private suspend fun recount(target: Audience) {
         if (target.statuses.isEmpty()) {
