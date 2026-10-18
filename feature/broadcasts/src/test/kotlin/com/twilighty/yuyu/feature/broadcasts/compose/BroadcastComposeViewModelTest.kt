@@ -106,6 +106,32 @@ class BroadcastComposeViewModelTest {
     }
 
     @Test
+    fun aFailedCountCanBeRetriedWithoutChangingTheAudience() = runTest(dispatcher) {
+        repository.countResult = { AppResult.Failure(AppError.Network()) }
+        val vm = ready()
+        assertTrue(vm.uiState.value.count is RecipientCount.Failed)
+
+        repository.countResult = { AppResult.Success(7) }
+        vm.retryCount()
+        advanceUntilIdle()
+        assertEquals(RecipientCount.Ready(7), vm.uiState.value.count)
+        assertEquals(2, repository.countCalls.size)
+    }
+
+    @Test
+    fun pickingATemplateWithTheSameAudienceRetriesAFailedCount() = runTest(dispatcher) {
+        repository.countResult = { AppResult.Failure(AppError.Network()) }
+        val vm = ready()
+        assertTrue(vm.uiState.value.count is RecipientCount.Failed)
+
+        repository.countResult = { AppResult.Success(5) }
+        // "reminder" targets confirmed guests, the same audience as the default template.
+        vm.pickTemplate("reminder")
+        advanceUntilIdle()
+        assertEquals(RecipientCount.Ready(5), vm.uiState.value.count)
+    }
+
+    @Test
     fun zeroRecipientsDisablesSend() = runTest(dispatcher) {
         repository.countResult = { AppResult.Success(0) }
         val vm = ready()
