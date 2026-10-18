@@ -23,12 +23,12 @@ data object AccountRoute
  * Signed-out destinations. Success needs no navigation callback: the session
  * state changes and `:app` swaps to the signed-in UI.
  */
-fun NavGraphBuilder.signedOutGraph() {
+fun NavGraphBuilder.signedOutGraph(onOpenStation: () -> Unit) {
     composable<ServerSetupRoute> { ServerSetupScreen() }
-    composable<SignInRoute> { SignInScreen() }
+    composable<SignInRoute> { SignInScreen(onOpenStation = onOpenStation) }
 }
 
 /** The Account tab. [onOpenDesignGallery] is only reachable in debug builds. */
-fun NavGraphBuilder.accountScreen(onOpenDesignGallery: () -> Unit) {
-    composable<AccountRoute> { AccountScreen(onOpenDesignGallery = onOpenDesignGallery) }
+fun NavGraphBuilder.accountScreen(onOpenDesignGallery: () -> Unit, onOpenStation: () -> Unit) {
+    composable<AccountRoute> { AccountScreen(onOpenDesignGallery = onOpenDesignGallery, onOpenStation = onOpenStation) }
 }

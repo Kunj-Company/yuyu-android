@@ -12,4 +12,6 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.androidx.browser)
     implementation(libs.coil.compose)
+
+    testImplementation(libs.androidx.datastore.preferences)
 }

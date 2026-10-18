@@ -56,6 +56,7 @@ import com.twilighty.yuyu.feature.broadcasts.navigation.broadcastsGraph
 import com.twilighty.yuyu.feature.broadcasts.navigation.navigateToBroadcastCompose
 import com.twilighty.yuyu.feature.broadcasts.navigation.navigateToBroadcastHistory
 import com.twilighty.yuyu.feature.checkin.navigation.checkInGraph
+import com.twilighty.yuyu.feature.checkin.navigation.navigateToOpenStation
 import com.twilighty.yuyu.feature.checkin.navigation.navigateToScanner
 import com.twilighty.yuyu.feature.checkin.navigation.navigateToStationUnlock
 import com.twilighty.yuyu.feature.checkin.navigation.stationGraph
@@ -95,7 +96,7 @@ private fun SignedOutHost(hasServer: Boolean, viewModel: AppViewModel) {
         startDestination = if (hasServer) SignInRoute else ServerSetupRoute,
         modifier = Modifier.fillMaxSize().background(YuyuTheme.colors.bgCanvas),
     ) {
-        signedOutGraph()
+        signedOutGraph(onOpenStation = { navController.navigateToOpenStation() })
         // Door stations need no account: volunteers open them from a station link.
         stationGraph(navController)
     }
@@ -180,7 +181,10 @@ private fun SignedInApp(state: AppUiState, viewModel: AppViewModel) {
             )
             checkInGraph(navController)
             broadcastsGraph(navController)
-            accountScreen(onOpenDesignGallery = { navController.navigate(DesignGalleryRoute) })
+            accountScreen(
+                onOpenDesignGallery = { navController.navigate(DesignGalleryRoute) },
+                onOpenStation = { navController.navigateToOpenStation() },
+            )
             if (BuildConfig.DEBUG) {
                 composable<DesignGalleryRoute> { DesignSystemGallery(onBack = navController::popBackStack) }
             }

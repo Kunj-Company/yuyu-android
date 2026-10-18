@@ -54,7 +54,7 @@ internal object WebPaths {
 }
 
 @Composable
-fun SignInScreen(viewModel: SignInViewModel = hiltViewModel()) {
+fun SignInScreen(onOpenStation: () -> Unit, viewModel: SignInViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -84,6 +84,7 @@ fun SignInScreen(viewModel: SignInViewModel = hiltViewModel()) {
         onCreateAccount = { open(WebPaths.SIGN_UP) },
         onForgotPassword = { open(WebPaths.RESET_PASSWORD) },
         onChangeServer = viewModel::changeServer,
+        onOpenStation = onOpenStation,
     )
 }
 
@@ -104,6 +105,7 @@ internal fun SignInContent(
     onCreateAccount: () -> Unit,
     onForgotPassword: () -> Unit,
     onChangeServer: () -> Unit,
+    onOpenStation: () -> Unit = {},
 ) {
     val c = YuyuTheme.colors
     val t = YuyuTheme.typography
@@ -180,6 +182,8 @@ internal fun SignInContent(
                             YuyuButton("New here? Create an account on the website", onCreateAccount, variant = YuyuButtonVariant.Quiet, fullWidth = true)
                         }
                         YuyuButton("Use a different server", onChangeServer, variant = YuyuButtonVariant.Quiet, fullWidth = true)
+                        // Door volunteers often have no account; the station only needs the organiser's PIN.
+                        YuyuButton("Volunteering at the door? Open a check-in station", onOpenStation, variant = YuyuButtonVariant.Quiet, fullWidth = true)
                     }
                     SignInStep.Mfa -> {
                         Text("Two-step check", style = t.h1, color = c.text, modifier = Modifier.semantics { heading() })

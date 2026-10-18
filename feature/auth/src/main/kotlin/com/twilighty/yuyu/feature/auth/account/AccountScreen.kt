@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
@@ -61,6 +62,7 @@ private val AppearanceOptions = listOf(AppearanceMode.Light, AppearanceMode.Dark
 @Composable
 fun AccountScreen(
     onOpenDesignGallery: () -> Unit,
+    onOpenStation: () -> Unit,
     viewModel: AccountViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -116,6 +118,17 @@ fun AccountScreen(
                 selectedIndex = AppearanceOptions.indexOf(state.appearance),
                 onSelect = { viewModel.setAppearance(AppearanceOptions[it]) },
             )
+
+            SectionHeader("Volunteering")
+            YuyuCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                ListRow(
+                    title = "Open a check-in station",
+                    supporting = "Run a door desk with the PIN from the organiser",
+                    leadingIcon = Icons.Outlined.QrCodeScanner,
+                    showChevron = true,
+                    onClick = onOpenStation,
+                )
+            }
 
             SectionHeader("Security")
             YuyuCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
@@ -191,7 +204,32 @@ fun AccountScreen(
             YuyuButton("Save name", viewModel::saveName, fullWidth = true, loading = state.savingName, loadingText = "Saving…")
         }
     }
-    if (state.confirmSignOutEverywhere) {
+    val warning = state.unsyncedWarning
+    if (warning != null) {
+        val noun = if (warning.count == 1) "check-in hasn't" else "check-ins haven't"
+        val action = when (warning.action) {
+            SignOutAction.SignOut -> "Sign out anyway"
+            SignOutAction.SignOutEverywhere -> "Sign out everywhere anyway"
+            SignOutAction.ChangeServer -> "Change server anyway"
+        }
+        YuyuBottomSheet(onDismiss = viewModel::dismissUnsyncedWarning, title = "${warning.count} offline $noun synced") {
+            Text(
+                "They're only on this phone. Signing out or changing server removes them, so those guests won't show as checked in.",
+                style = t.bodyUi,
+                color = c.textSecondary,
+            )
+            YuyuButton(
+                "Sync now",
+                viewModel::syncNowAndContinue,
+                fullWidth = true,
+                loading = warning.syncing,
+                loadingText = "Syncing…",
+            )
+            YuyuButton(action, viewModel::continueWithoutSyncing, variant = YuyuButtonVariant.Danger, fullWidth = true, enabled = !warning.syncing)
+            YuyuButton("Cancel", viewModel::dismissUnsyncedWarning, variant = YuyuButtonVariant.Secondary, fullWidth = true)
+        }
+    }
+    if (state.confirmSignOutEverywhere && warning == null) {
         ConfirmDialog(
             title = "Sign out everywhere?",
             body = "You'll be signed out on every phone and browser, including this one. You can sign back in at any time.",
@@ -205,7 +243,7 @@ fun AccountScreen(
             onDismiss = { viewModel.askSignOutEverywhere(false) },
         )
     }
-    if (state.confirmChangeServer) {
+    if (state.confirmChangeServer && warning == null) {
         ConfirmDialog(
             title = "Change server?",
             body = "You'll be signed out and offline tickets on this phone will be removed.",
