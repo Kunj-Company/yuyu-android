@@ -3,4 +3,8 @@
     <!-- Ticket scanning. Requested at runtime only when the scanner opens. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Distinct haptic patterns for valid / already checked in / invalid tickets. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Online/offline detection for the offline check-in fallback. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 </manifest>
