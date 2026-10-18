@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -180,7 +181,8 @@ private fun EventsList(
 private fun OrgSwitcherBar(org: OrgOption?, canSwitch: Boolean, onClick: () -> Unit) {
     val c = YuyuTheme.colors
     val t = YuyuTheme.typography
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 4.dp)) {
+    // A custom top bar, so it must keep clear of the status bar itself (TopAppBar would).
+    Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 4.dp)) {
         Text("Organise", style = t.overline, color = c.textMuted)
         Row(
             Modifier
