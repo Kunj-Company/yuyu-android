@@ -23,6 +23,7 @@ googleid = "1.2.1"
 camerax = "1.6.2"
 mlkitBarcode = "17.3.0"
 browser = "1.10.0"
+zxing = "3.5.3"
 junit = "4.13.2"
 robolectric = "4.17"
 turbine = "1.2.1"
@@ -95,6 +96,7 @@ androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.r
 androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
 androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
 mlkit-barcode-scanning = { module = "com.google.mlkit:barcode-scanning", version.ref = "mlkitBarcode" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 
 # Test
 junit = { module = "junit:junit", version.ref = "junit" }

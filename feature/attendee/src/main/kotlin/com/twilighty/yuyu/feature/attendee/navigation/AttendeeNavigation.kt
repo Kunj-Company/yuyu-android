@@ -6,7 +6,12 @@ import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
-import com.twilighty.yuyu.feature.attendee.PlaceholderScreen
+import com.twilighty.yuyu.feature.attendee.discover.DiscoverRoute as DiscoverScreenRoute
+import com.twilighty.yuyu.feature.attendee.event.EventDetailRoute as EventDetailScreenRoute
+import com.twilighty.yuyu.feature.attendee.feedback.FeedbackRoute as FeedbackScreenRoute
+import com.twilighty.yuyu.feature.attendee.register.RegisterRoute as RegisterScreenRoute
+import com.twilighty.yuyu.feature.attendee.ticket.TicketRoute as TicketScreenRoute
+import com.twilighty.yuyu.feature.attendee.tickets.MyTicketsRoute as MyTicketsScreenRoute
 import kotlinx.serialization.Serializable
 
 /** The attendee nested graph (bottom-nav "Tickets" tab). */
@@ -57,42 +62,51 @@ fun NavController.navigateToTicket(token: String, builder: NavOptionsBuilder.() 
 fun NavController.navigateToFeedback(orgSlug: String, eventSlug: String, builder: NavOptionsBuilder.() -> Unit = {}) =
     navigate(FeedbackRoute(orgSlug, eventSlug), builder)
 
-/**
- * Registers every attendee screen. Owned by `:feature:attendee`: replace the
- * placeholders with real screens here without touching `:app`.
- */
+/** Registers every attendee screen. Owned by `:feature:attendee`. */
 fun NavGraphBuilder.attendeeGraph(navController: NavController) {
     navigation<AttendeeGraph>(startDestination = MyTicketsRoute) {
         composable<MyTicketsRoute> {
-            PlaceholderScreen(
-                title = "Tickets",
-                detail = "Your upcoming and past registrations will appear here.",
-                actions = listOf("Discover events" to { navController.navigateToDiscover() }),
+            MyTicketsScreenRoute(
+                onOpenTicket = { navController.navigateToTicket(it) { launchSingleTop = true } },
+                onOpenEvent = { org, event -> navController.navigateToEventDetail(org, event) },
+                onDiscover = { navController.navigateToDiscover() },
             )
         }
         composable<DiscoverRoute> {
-            PlaceholderScreen("Discover", "Search and browse public events.", onBack = navController::popBackStack)
+            DiscoverScreenRoute(
+                onBack = navController::popBackStack,
+                onOpenEvent = { org, event -> navController.navigateToEventDetail(org, event) },
+            )
         }
         composable<EventDetailRoute> { entry ->
             val route = entry.toRoute<EventDetailRoute>()
-            PlaceholderScreen(
-                title = "Event",
-                detail = "Event page for ${route.orgSlug}/${route.eventSlug}.",
+            EventDetailScreenRoute(
                 onBack = navController::popBackStack,
-                actions = listOf(
-                    "Register" to { navController.navigateToRegister(route.orgSlug, route.eventSlug) },
-                    "Feedback" to { navController.navigateToFeedback(route.orgSlug, route.eventSlug) },
-                ),
+                onRegister = { navController.navigateToRegister(route.orgSlug, route.eventSlug) },
+                onOpenTicket = { navController.navigateToTicket(it) { launchSingleTop = true } },
+                onFeedback = { navController.navigateToFeedback(route.orgSlug, route.eventSlug) },
             )
         }
         composable<RegisterRoute> {
-            PlaceholderScreen("Register", "The registration form will be here.", onBack = navController::popBackStack)
+            RegisterScreenRoute(
+                onBack = navController::popBackStack,
+                onOpenTicket = { token ->
+                    // Replace the form with the ticket so Back returns to the event page.
+                    navController.navigateToTicket(token) {
+                        popUpTo<RegisterRoute> { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+            )
         }
         composable<TicketRoute> {
-            PlaceholderScreen("Ticket", "Your live ticket will be here.", onBack = navController::popBackStack)
+            TicketScreenRoute(
+                onBack = navController::popBackStack,
+                onOpenEvent = { org, event -> navController.navigateToEventDetail(org, event) { launchSingleTop = true } },
+            )
         }
         composable<FeedbackRoute> {
-            PlaceholderScreen("Feedback", "The feedback form will be here.", onBack = navController::popBackStack)
+            FeedbackScreenRoute(onBack = navController::popBackStack)
         }
     }
 }
