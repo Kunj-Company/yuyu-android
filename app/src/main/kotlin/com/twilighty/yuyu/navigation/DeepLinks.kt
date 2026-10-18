@@ -7,6 +7,9 @@ sealed interface DeepLink {
     }
     data class Event(val orgSlug: String, val eventSlug: String) : DeepLink
     data class Feedback(val orgSlug: String, val eventSlug: String) : DeepLink
+
+    /** `/{org}/{event}/check-in`: the PIN-protected door station (no account needed). */
+    data class Station(val orgSlug: String, val eventSlug: String) : DeepLink
     data class ShortCode(val code: String) : DeepLink
     data class Discover(val query: String?) : DeepLink
 
@@ -16,7 +19,8 @@ sealed interface DeepLink {
 
 /**
  * Maps `https://{host}/…` App Links and `yuyu://…` links to app destinations:
- * `/ticket/{token}`, `/{org}/{event}`, `/{org}/{event}/feedback`, short codes
+ * `/ticket/{token}`, `/{org}/{event}`, `/{org}/{event}/feedback`,
+ * `/{org}/{event}/check-in` (door station), short codes
  * (7 characters with an uppercase letter; resolved via `GET /public/short/:code`,
  * arriving through `yuyu://` or shared links — they are not App Link claimed)
  * and `/discover`. Website-only pages go back to the browser. Pure function so
@@ -33,7 +37,7 @@ object DeepLinkParser {
     )
 
     /** Event sub-pages the app doesn't have: `/{org}/{event}/<x>[/…]`. */
-    private val WEB_ONLY_EVENT_SUBPAGES = setOf("check-in", "schedule", "sessions", "speakers")
+    private val WEB_ONLY_EVENT_SUBPAGES = setOf("schedule", "sessions", "speakers")
 
     /**
      * @param scheme `https` or `yuyu`
@@ -57,7 +61,9 @@ object DeepLinkParser {
             firstLower == "discover" && segments.size == 1 -> DeepLink.Discover(query?.let { parseQuery(it)["q"] })
             firstLower in RESERVED || firstLower.startsWith("super-admin") -> fallback
             segments.size == 1 && SHORT_CODE.matches(first) -> DeepLink.ShortCode(first)
-            segments.size >= 2 && (segments[1] == "i" || segments.getOrNull(2) in WEB_ONLY_EVENT_SUBPAGES) -> fallback
+            segments.size == 3 && segments[2] == "check-in" && SLUG.matches(first) && SLUG.matches(segments[1]) ->
+                DeepLink.Station(first, segments[1])
+            segments.size >= 2 && (segments[1] == "i" || segments.getOrNull(2) == "check-in" || segments.getOrNull(2) in WEB_ONLY_EVENT_SUBPAGES) -> fallback
             segments.size == 2 && SLUG.matches(first) && SLUG.matches(segments[1]) -> DeepLink.Event(first, segments[1])
             segments.size == 3 && segments[2] == "feedback" && SLUG.matches(first) && SLUG.matches(segments[1]) ->
                 DeepLink.Feedback(first, segments[1])

@@ -58,6 +58,7 @@ import com.twilighty.yuyu.feature.broadcasts.navigation.navigateToBroadcastHisto
 import com.twilighty.yuyu.feature.checkin.navigation.checkInGraph
 import com.twilighty.yuyu.feature.checkin.navigation.navigateToScanner
 import com.twilighty.yuyu.feature.checkin.navigation.navigateToStationUnlock
+import com.twilighty.yuyu.feature.checkin.navigation.stationGraph
 import com.twilighty.yuyu.feature.organiser.navigation.OrganiserExternalNavigation
 import com.twilighty.yuyu.feature.organiser.navigation.OrganiserGraph
 import com.twilighty.yuyu.feature.organiser.navigation.OrganiserHomeRoute
@@ -80,13 +81,13 @@ fun YuyuApp(state: AppUiState, viewModel: AppViewModel) {
     val c = YuyuTheme.colors
     when (val session = state.session) {
         SessionState.Loading -> Box(Modifier.fillMaxSize().background(c.bgCanvas))
-        SessionState.NoServer, is SessionState.SignedOut -> SignedOutHost(hasServer = session !is SessionState.NoServer)
+        SessionState.NoServer, is SessionState.SignedOut -> SignedOutHost(hasServer = session !is SessionState.NoServer, viewModel = viewModel)
         is SessionState.SignedIn -> SignedInApp(state, viewModel)
     }
 }
 
 @Composable
-private fun SignedOutHost(hasServer: Boolean) {
+private fun SignedOutHost(hasServer: Boolean, viewModel: AppViewModel) {
     // Recreated whenever the step changes; the state (not navigation) decides the screen.
     val navController = rememberNavController()
     NavHost(
@@ -95,6 +96,8 @@ private fun SignedOutHost(hasServer: Boolean) {
         modifier = Modifier.fillMaxSize().background(YuyuTheme.colors.bgCanvas),
     ) {
         signedOutGraph()
+        // Door stations need no account: volunteers open them from a station link.
+        stationGraph(navController)
     }
     LaunchedEffect(hasServer) {
         // Only move when the step really changed (e.g. server saved, or "Use a different server").
@@ -105,6 +108,14 @@ private fun SignedOutHost(hasServer: Boolean) {
                 popUpTo(navController.graph.id) { inclusive = true }
             }
         }
+    }
+    // After the step check above (effects run in order), so it isn't undone by it.
+    val pending by viewModel.pendingDeepLink.collectAsStateWithLifecycle()
+    LaunchedEffect(pending, hasServer) {
+        val link = pending as? DeepLink.Station ?: return@LaunchedEffect
+        if (!hasServer) return@LaunchedEffect
+        viewModel.consumeDeepLink()
+        navController.navigateToStationUnlock(link.orgSlug, link.eventSlug)
     }
 }
 
@@ -124,6 +135,7 @@ private fun SignedInApp(state: AppUiState, viewModel: AppViewModel) {
             is DeepLink.Ticket -> navController.navigateToTicket(link.token)
             is DeepLink.Event -> navController.navigateToEventDetail(link.orgSlug, link.eventSlug)
             is DeepLink.Feedback -> navController.navigateToFeedback(link.orgSlug, link.eventSlug)
+            is DeepLink.Station -> navController.navigateToStationUnlock(link.orgSlug, link.eventSlug)
             is DeepLink.Discover -> navController.navigateToDiscover(link.query)
             is DeepLink.ShortCode -> {
                 val target = viewModel.resolveShortLink(link.code)
