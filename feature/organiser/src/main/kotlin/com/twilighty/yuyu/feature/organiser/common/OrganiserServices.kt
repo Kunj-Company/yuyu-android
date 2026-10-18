@@ -6,10 +6,12 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.twilighty.yuyu.core.data.di.SettingsPrefs
 import com.twilighty.yuyu.core.data.repository.AuthRepository
+import com.twilighty.yuyu.core.data.session.LocalDataCleaner
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import dagger.multibindings.IntoSet
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -25,13 +27,18 @@ interface OrganiserPreferences {
 @Singleton
 class DataStoreOrganiserPreferences @Inject constructor(
     @param:SettingsPrefs private val dataStore: DataStore<Preferences>,
-) : OrganiserPreferences {
+) : OrganiserPreferences, LocalDataCleaner {
     private val lastOrg: Flow<String?> = dataStore.data.map { it[KEY_LAST_ORG] }
 
     override suspend fun lastOrgSlug(): String? = lastOrg.first()
 
     override suspend fun setLastOrgSlug(slug: String) {
         dataStore.edit { it[KEY_LAST_ORG] = slug }
+    }
+
+    /** The next account may not belong to the same organisation. Appearance and server stay. */
+    override suspend fun clear() {
+        dataStore.edit { it.remove(KEY_LAST_ORG) }
     }
 
     private companion object {
@@ -56,4 +63,5 @@ class AuthWebLinks @Inject constructor(private val auth: AuthRepository) : WebLi
 internal abstract class OrganiserModule {
     @Binds abstract fun bindsOrganiserPreferences(impl: DataStoreOrganiserPreferences): OrganiserPreferences
     @Binds abstract fun bindsWebLinks(impl: AuthWebLinks): WebLinks
+    @Binds @IntoSet abstract fun bindsOrganiserCleaner(impl: DataStoreOrganiserPreferences): LocalDataCleaner
 }

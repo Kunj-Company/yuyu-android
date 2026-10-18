@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.twilighty.yuyu.core.data.session.LocalDataCleaner
 import com.twilighty.yuyu.core.network.model.BroadcastAttendance
 import com.twilighty.yuyu.core.network.model.BroadcastDesign
 import com.twilighty.yuyu.feature.broadcasts.editor.EmailHtml
@@ -16,6 +17,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dagger.multibindings.IntoSet
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Qualifier
@@ -101,4 +103,17 @@ object BroadcastDraftModule {
 abstract class BroadcastDraftBindsModule {
     @Binds
     abstract fun bindsDraftStore(impl: DataStoreBroadcastDraftStore): BroadcastDraftStore
+
+    @Binds
+    @IntoSet
+    abstract fun bindsDraftCleaner(impl: BroadcastDraftCleaner): LocalDataCleaner
+}
+
+/** Drafts can name attendees and event details, so they never survive a sign-out on a shared phone. */
+class BroadcastDraftCleaner @Inject constructor(
+    @param:BroadcastDraftPrefs private val dataStore: DataStore<Preferences>,
+) : LocalDataCleaner {
+    override suspend fun clear() {
+        dataStore.edit { it.clear() }
+    }
 }
