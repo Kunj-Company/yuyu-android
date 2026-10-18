@@ -13,4 +13,16 @@ dependencies {
     implementation(libs.androidx.camera.view)
     // Bundled model: works offline at the door without Play services downloads.
     implementation(libs.mlkit.barcode.scanning)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.coil.compose)
+
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.retrofit)
+    testImplementation(libs.retrofit.kotlinx.serialization)
+    testImplementation(libs.androidx.work.runtime.ktx)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

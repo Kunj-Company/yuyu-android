@@ -58,6 +58,30 @@ Google sign-in appears only when the server's `GET /auth/config` reports it as
 enabled with a web client id; the server must also accept this app's Android
 client id (`GOOGLE_ANDROID_CLIENT_IDS`).
 
+## Continuous integration
+
+`.github/workflows/android.yml` runs on every push to `main`, `feat/**` and
+`fix/**`, on pull requests, and on `v*` tags. It runs the unit tests and lint,
+then builds the debug APK, the release APK and the release bundle (AAB). Each
+run uploads them as a `yuyu-<version>` artifact with a `SHA256SUMS.txt`, plus
+the test and lint reports. Pushing a tag such as `v0.2.0` also publishes a
+GitHub release with the APKs attached.
+
+Builds get `versionCode` from the run number. The version name is the tag on
+tag builds and `0.1.0-<run>` otherwise. Locally you can pass the same values:
+`./gradlew assembleRelease -Pyuyu.versionCode=7 -Pyuyu.versionName=0.2.0`.
+
+Release signing is optional. Add these repository secrets to sign release
+builds with your own key; without them, release builds use the debug key and
+are only suitable for testing:
+
+| Secret | Value |
+| --- | --- |
+| `YUYU_KEYSTORE_BASE64` | `base64 -i release.keystore` output |
+| `YUYU_KEYSTORE_PASSWORD` | Keystore password |
+| `YUYU_KEY_ALIAS` | Key alias |
+| `YUYU_KEY_PASSWORD` | Key password |
+
 ## Module map
 
 | Module | What it holds |

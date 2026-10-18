@@ -17,6 +17,7 @@ class DeepLinkParserTest {
         assertEquals(DeepLink.Event("civic-tech", "spring-hack-night"), https("/civic-tech/spring-hack-night"))
         assertEquals(DeepLink.Feedback("civic-tech", "spring-hack-night"), https("/civic-tech/spring-hack-night/feedback"))
         assertEquals(DeepLink.ShortCode("aB3x9Kq"), https("/aB3x9Kq"))
+        assertEquals(DeepLink.Station("civic-tech", "spring-hack-night"), https("/civic-tech/spring-hack-night/check-in"))
         assertEquals(DeepLink.Discover("music"), https("/discover", "q=music"))
     }
 
@@ -25,7 +26,7 @@ class DeepLinkParserTest {
         listOf(
             "/join/abc123", "/dashboard/civic-tech", "/account", "/privacy", "/civic-tech", "/a/b/c/d",
             "/super-admin", "/super-admin-mfa", "/api/uploads/x", "/login", "/reset-password", "/verify-email", "/embed/x/y",
-            "/civic-tech/hack/check-in", "/civic-tech/i/clinstance1", "/civic-tech/hack/schedule",
+            "/civic-tech/hack/check-in/extra", "/civic-tech/i/clinstance1", "/civic-tech/hack/schedule",
             "/civic-tech/hack/sessions/s1", "/civic-tech/hack/speakers/ada",
             // 7 characters but no uppercase letter: an organisation page, not a short code.
             "/abcdefg",
@@ -38,6 +39,7 @@ class DeepLinkParserTest {
     fun customSchemeTreatsHostAsFirstSegment() {
         assertEquals(DeepLink.Ticket("tkABCDEFGH123"), DeepLinkParser.parse("yuyu", "ticket", listOf("tkABCDEFGH123"), webUrl = null))
         assertEquals(DeepLink.Event("org", "event"), DeepLinkParser.parse("yuyu", "org", listOf("event"), webUrl = null))
+        assertEquals(DeepLink.Station("org", "event"), DeepLinkParser.parse("yuyu", "org", listOf("event", "check-in"), webUrl = null))
         assertEquals(null, DeepLinkParser.parse("yuyu", "join", listOf("x"), webUrl = null))
         assertEquals(null, DeepLinkParser.parse("ftp", "x", emptyList(), webUrl = null))
     }

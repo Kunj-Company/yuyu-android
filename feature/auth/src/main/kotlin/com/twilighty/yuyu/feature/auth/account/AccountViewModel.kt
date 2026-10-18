@@ -13,6 +13,7 @@ import com.twilighty.yuyu.core.data.repository.AuthRepository
 import com.twilighty.yuyu.core.data.repository.MeRepository
 import com.twilighty.yuyu.core.data.repository.SessionState
 import com.twilighty.yuyu.core.data.server.ServerUrl
+import com.twilighty.yuyu.core.data.sync.UnsyncedCheckIns
 import com.twilighty.yuyu.core.network.model.UserDto
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -23,6 +24,12 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** What the person asked for when we stopped to warn about offline check-ins. */
+enum class SignOutAction { SignOut, SignOutEverywhere, ChangeServer }
+
+/** Offline check-ins live in the local database, which signing out or changing server wipes. */
+data class UnsyncedWarning(val action: SignOutAction, val count: Int, val syncing: Boolean = false)
 
 data class AccountUiState(
     val user: UserDto? = null,
@@ -37,6 +44,7 @@ data class AccountUiState(
     val confirmChangeServer: Boolean = false,
     val busy: Boolean = false,
     val message: String? = null,
+    val unsyncedWarning: UnsyncedWarning? = null,
 )
 
 private data class LocalState(
@@ -47,6 +55,7 @@ private data class LocalState(
     val confirmChangeServer: Boolean = false,
     val busy: Boolean = false,
     val message: String? = null,
+    val unsyncedWarning: UnsyncedWarning? = null,
 )
 
 @HiltViewModel
@@ -54,6 +63,7 @@ class AccountViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val meRepository: MeRepository,
     private val preferences: AppPreferences,
+    private val unsyncedCheckIns: UnsyncedCheckIns,
     buildInfo: AppBuildInfo,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
@@ -73,6 +83,7 @@ class AccountViewModel @Inject constructor(
             confirmChangeServer = l.confirmChangeServer,
             busy = l.busy,
             message = l.message,
+            unsyncedWarning = l.unsyncedWarning,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AccountUiState(showDesignGallery = buildInfo.isDebug))
 
@@ -114,30 +125,74 @@ class AccountViewModel @Inject constructor(
         }
     }
 
-    fun signOut() {
-        local.update { it.copy(busy = true) }
-        viewModelScope.launch { authRepository.signOut() }
-    }
+    fun signOut() = guarded(SignOutAction.SignOut)
 
     fun askSignOutEverywhere(show: Boolean) = local.update { it.copy(confirmSignOutEverywhere = show) }
 
-    fun signOutEverywhere() {
-        local.update { it.copy(busy = true) }
+    fun signOutEverywhere() = guarded(SignOutAction.SignOutEverywhere)
+
+    fun askChangeServer(show: Boolean) = local.update { it.copy(confirmChangeServer = show) }
+
+    fun changeServer() = guarded(SignOutAction.ChangeServer)
+
+    /** Push the waiting check-ins, then carry on only if nothing is left behind. */
+    fun syncNowAndContinue() {
+        val warning = local.value.unsyncedWarning ?: return
+        local.update { it.copy(unsyncedWarning = warning.copy(syncing = true)) }
         viewModelScope.launch {
-            when (val result = authRepository.signOutEverywhere()) {
-                is AppResult.Success -> Unit
-                is AppResult.Failure -> local.update { it.copy(busy = false, confirmSignOutEverywhere = false, message = result.error.message) }
+            val left = runCatching { unsyncedCheckIns.trySyncNow() }.getOrElse { warning.count }
+            if (left == 0) {
+                local.update { it.copy(unsyncedWarning = null, message = "Check-ins synced.") }
+                perform(warning.action)
+            } else {
+                local.update {
+                    it.copy(
+                        unsyncedWarning = warning.copy(count = left, syncing = false),
+                        message = "$left ${if (left == 1) "check-in" else "check-ins"} still couldn't sync. Check your connection.",
+                    )
+                }
             }
         }
     }
 
-    fun askChangeServer(show: Boolean) = local.update { it.copy(confirmChangeServer = show) }
+    /** The person chose to lose the waiting check-ins. */
+    fun continueWithoutSyncing() {
+        val warning = local.value.unsyncedWarning ?: return
+        local.update { it.copy(unsyncedWarning = null) }
+        perform(warning.action)
+    }
 
-    fun changeServer() {
+    fun dismissUnsyncedWarning() = local.update {
+        it.copy(unsyncedWarning = null, confirmSignOutEverywhere = false, confirmChangeServer = false)
+    }
+
+    private fun guarded(action: SignOutAction) {
+        viewModelScope.launch {
+            val waiting = runCatching { unsyncedCheckIns.current() }.getOrDefault(0)
+            if (waiting > 0) {
+                local.update { it.copy(unsyncedWarning = UnsyncedWarning(action, waiting)) }
+            } else {
+                perform(action)
+            }
+        }
+    }
+
+    private fun perform(action: SignOutAction) {
         local.update { it.copy(busy = true) }
         viewModelScope.launch {
-            authRepository.signOut()
-            authRepository.clearServer()
+            when (action) {
+                SignOutAction.SignOut -> authRepository.signOut()
+                SignOutAction.SignOutEverywhere -> when (val result = authRepository.signOutEverywhere()) {
+                    is AppResult.Success -> Unit
+                    is AppResult.Failure -> local.update {
+                        it.copy(busy = false, confirmSignOutEverywhere = false, message = result.error.message)
+                    }
+                }
+                SignOutAction.ChangeServer -> {
+                    authRepository.signOut()
+                    authRepository.clearServer()
+                }
+            }
         }
     }
 
