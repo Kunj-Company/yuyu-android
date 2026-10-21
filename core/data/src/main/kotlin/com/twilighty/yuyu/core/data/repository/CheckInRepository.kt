@@ -26,6 +26,7 @@ import com.twilighty.yuyu.core.network.model.OfflineCheckInDto
 import com.twilighty.yuyu.core.network.model.RsvpIdRequest
 import com.twilighty.yuyu.core.network.model.SyncCheckInsRequest
 import com.twilighty.yuyu.core.network.model.SyncCheckInsResultDto
+import com.twilighty.yuyu.core.network.model.SyncFailureDto
 import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
@@ -197,14 +198,35 @@ class CheckInRepositoryImpl @Inject constructor(
 
     override fun observePendingCount() = pendingDao.observeTotalCount()
 
+    /**
+     * The server accepts at most [MAX_SYNC_BATCH] check-ins per request, so the
+     * queue goes up in order, one batch at a time. Each batch's results are
+     * applied before the next is sent; on the first error the remaining batches
+     * stay queued (already-applied ones are not resent) and that error is
+     * returned so the caller can retry later. Every batch carries its rows'
+     * idempotency keys, so a retried batch never double-counts.
+     */
     override suspend fun syncPending(orgSlug: String, eventId: String): AppResult<SyncCheckInsResultDto> {
         val pending = pendingDao.forEvent(eventId)
         if (pending.isEmpty()) return AppResult.Success(SyncCheckInsResultDto())
-        val request = SyncCheckInsRequest(pending.map { OfflineCheckInDto(it.rsvpId, it.checkedInAt, it.force, it.clientMutationId) })
-        return apiCall { api.syncCheckIns(orgSlug, eventId, request) }.onSuccess { result ->
-            pendingDao.remove(eventId, result.syncedIds + result.alreadyCheckedInIds)
-            result.failed.forEach { pendingDao.markFailed(eventId, it.rsvpId, it.error) }
+        val synced = mutableListOf<String>()
+        val alreadyCheckedIn = mutableListOf<String>()
+        val failed = mutableListOf<SyncFailureDto>()
+        for (batch in pending.chunked(MAX_SYNC_BATCH)) {
+            val request = SyncCheckInsRequest(batch.map { OfflineCheckInDto(it.rsvpId, it.checkedInAt, it.force, it.clientMutationId) })
+            when (val result = apiCall { api.syncCheckIns(orgSlug, eventId, request) }) {
+                is AppResult.Failure -> return result
+                is AppResult.Success -> {
+                    val data = result.data
+                    pendingDao.remove(eventId, data.syncedIds + data.alreadyCheckedInIds)
+                    data.failed.forEach { pendingDao.markFailed(eventId, it.rsvpId, it.error) }
+                    synced += data.syncedIds
+                    alreadyCheckedIn += data.alreadyCheckedInIds
+                    failed += data.failed
+                }
+            }
         }
+        return AppResult.Success(SyncCheckInsResultDto(synced, alreadyCheckedIn, failed))
     }
 
     override suspend fun syncAllPending(): AppResult<Unit> {
@@ -227,4 +249,9 @@ class CheckInRepositoryImpl @Inject constructor(
         checkInDetails = runCatching { NetworkJson.decodeFromString(detailsSerializer, checkInDetailsJson) }.getOrDefault(emptyList()),
         registrationDetails = runCatching { NetworkJson.decodeFromString(detailsSerializer, registrationDetailsJson) }.getOrDefault(emptyList()),
     )
+
+    companion object {
+        /** Server cap on `checkIns` per `POST …/check-in/sync` (`.max(500)`). */
+        const val MAX_SYNC_BATCH = 500
+    }
 }
