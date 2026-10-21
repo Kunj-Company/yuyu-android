@@ -6,6 +6,13 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,8 +65,15 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuButtonVariant
 import com.twilighty.yuyu.core.designsystem.component.YuyuSnackbarHost
 import com.twilighty.yuyu.core.designsystem.component.YuyuTextField
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
+import com.twilighty.yuyu.core.designsystem.motion.appearOnEnter
 import com.twilighty.yuyu.core.designsystem.theme.YuyuSpacing
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
+import com.twilighty.yuyu.core.network.model.FeedbackFormDto
+import com.twilighty.yuyu.feature.attendee.common.AnimatedRevealValue
+import com.twilighty.yuyu.feature.attendee.common.successPop
 import com.twilighty.yuyu.feature.attendee.form.DynamicForm
 import com.twilighty.yuyu.feature.attendee.form.FormRules
 
@@ -120,62 +134,100 @@ internal fun FeedbackScreen(
     EventAccentScope(state.event?.accentColor) {
         Scaffold(
             topBar = { YuyuTopBar("Feedback", onBack = onBack) },
-            bottomBar = { if (showForm) SubmitBar(state, onSubmit) },
+            bottomBar = {
+                val reduced = LocalReducedMotion.current
+                AnimatedVisibility(
+                    visible = showForm,
+                    enter = if (reduced) EnterTransition.None else slideInVertically(YuyuSpecs.standard(delayMillis = 120)) { it } + fadeIn(YuyuSpecs.standard(delayMillis = 120)),
+                    exit = if (reduced) ExitTransition.None else slideOutVertically(YuyuSpecs.standard()) { it } + fadeOut(YuyuSpecs.quick()),
+                    label = "submitBar",
+                ) { SubmitBar(state, onSubmit) }
+            },
             snackbarHost = { YuyuSnackbarHost(snackbar) },
             containerColor = YuyuTheme.colors.bgCanvas,
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
-                when {
-                    state.loading -> LoadingState(label = "Loading the feedback form")
-                    state.closed -> MessageState(
-                        mood = DotFaceMood.Sleepy,
-                        title = "Feedback isn't open",
-                        body = "The organisers haven't opened feedback for this event, or it has closed.",
-                    )
-                    form == null -> MessageState(
-                        mood = if (state.offline) DotFaceMood.Sleepy else DotFaceMood.Sad,
-                        title = if (state.offline) "You're offline" else "Couldn't load the form",
-                        body = state.loadError,
-                        actionLabel = "Try again",
-                        onAction = onRetry,
-                    )
-                    state.submitted -> ThankYou(state, onSaveCertificate, onShareCertificate, onBack)
-                    else -> Column(
-                        Modifier
-                            .fillMaxSize()
-                            .imePadding()
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = YuyuSpacing.gutter, vertical = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(YuyuSpacing.sectionGap),
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(form.title, style = YuyuTheme.typography.h2, color = YuyuTheme.accent.accentText, modifier = Modifier.semantics { heading() })
-                            state.event?.let { Text(it.title, style = YuyuTheme.typography.bodyUi, color = YuyuTheme.colors.textSecondary) }
-                            form.intro?.let { Text(it, style = YuyuTheme.typography.body, color = YuyuTheme.colors.text) }
-                        }
-                        DynamicForm(
-                            fields = form.fields,
-                            state = state.answers,
-                            errors = state.errors,
-                            onStateChange = onAnswersChange,
-                            rules = FormRules.Feedback,
-                            enabled = !state.submitting,
+                YuyuStateTransition(
+                    targetState = state,
+                    modifier = Modifier.fillMaxSize(),
+                    contentKey = { it.phase },
+                    label = "feedback",
+                ) { shown ->
+                    val shownForm = shown.form
+                    when (shown.phase) {
+                        FeedbackPhase.Loading -> LoadingState(label = "Loading the feedback form")
+                        FeedbackPhase.Closed -> MessageState(
+                            mood = DotFaceMood.Sleepy,
+                            title = "Feedback isn't open",
+                            body = "The organisers haven't opened feedback for this event, or it has closed.",
                         )
-                        if (form.certificatesEnabled) {
-                            YuyuTextField(
-                                value = state.email,
-                                onValueChange = onEmailChange,
-                                label = "Email for your certificate",
-                                helper = "Use the email you registered with. We check it against confirmed registrations.",
-                                error = state.emailError,
-                                useAccentFocus = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
-                                modifier = Modifier.testTag("feedback-email"),
-                            )
-                        }
+                        FeedbackPhase.LoadError -> MessageState(
+                            mood = if (shown.offline) DotFaceMood.Sleepy else DotFaceMood.Sad,
+                            title = if (shown.offline) "You're offline" else "Couldn't load the form",
+                            body = shown.loadError,
+                            actionLabel = "Try again",
+                            onAction = onRetry,
+                        )
+                        FeedbackPhase.Thanks -> ThankYou(shown, onSaveCertificate, onShareCertificate, onBack)
+                        FeedbackPhase.Form -> if (shownForm != null) FeedbackForm(shown, shownForm, onAnswersChange, onEmailChange)
                     }
                 }
             }
+        }
+    }
+}
+
+private enum class FeedbackPhase { Loading, Closed, LoadError, Thanks, Form }
+
+private val FeedbackUiState.phase: FeedbackPhase
+    get() = when {
+        loading -> FeedbackPhase.Loading
+        closed -> FeedbackPhase.Closed
+        form == null -> FeedbackPhase.LoadError
+        submitted -> FeedbackPhase.Thanks
+        else -> FeedbackPhase.Form
+    }
+
+@Composable
+private fun FeedbackForm(
+    state: FeedbackUiState,
+    form: FeedbackFormDto,
+    onAnswersChange: (com.twilighty.yuyu.feature.attendee.form.AnswerState) -> Unit,
+    onEmailChange: (String) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = YuyuSpacing.gutter, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(YuyuSpacing.sectionGap),
+    ) {
+        Column(Modifier.appearOnEnter(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(form.title, style = YuyuTheme.typography.h2, color = YuyuTheme.accent.accentText, modifier = Modifier.semantics { heading() })
+            state.event?.let { Text(it.title, style = YuyuTheme.typography.bodyUi, color = YuyuTheme.colors.textSecondary) }
+            form.intro?.let { Text(it, style = YuyuTheme.typography.body, color = YuyuTheme.colors.text) }
+        }
+        DynamicForm(
+            modifier = Modifier.appearOnEnter(delayMillis = 80),
+            fields = form.fields,
+            state = state.answers,
+            errors = state.errors,
+            onStateChange = onAnswersChange,
+            rules = FormRules.Feedback,
+            enabled = !state.submitting,
+        )
+        if (form.certificatesEnabled) {
+            YuyuTextField(
+                value = state.email,
+                onValueChange = onEmailChange,
+                label = "Email for your certificate",
+                helper = "Use the email you registered with. We check it against confirmed registrations.",
+                error = state.emailError,
+                useAccentFocus = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
+                modifier = Modifier.appearOnEnter(delayMillis = 120).testTag("feedback-email"),
+            )
         }
     }
 }
@@ -192,10 +244,10 @@ private fun SubmitBar(state: FeedbackUiState, onSubmit: () -> Unit) {
                 1 -> "One answer needs a quick fix."
                 else -> "$problems answers need a quick fix."
             }
-            if (problem != null) {
+            AnimatedRevealValue(problem) { shownProblem ->
                 Row(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = c.dangerFg)
-                    Text(problem, style = YuyuTheme.typography.caption, color = c.dangerFg)
+                    Text(shownProblem, style = YuyuTheme.typography.caption, color = c.dangerFg)
                 }
             }
             YuyuButton(
@@ -220,34 +272,42 @@ private fun ThankYou(state: FeedbackUiState, onSave: () -> Unit, onShare: () -> 
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
     ) {
-        DotFace(DotFaceMood.Love, size = 112.dp, interactive = true)
+        // Feedback sent: a quick pop on the face, then the message settles in.
+        DotFace(DotFaceMood.Love, size = 112.dp, interactive = true, modifier = Modifier.successPop(from = 0.5f).appearOnEnter())
         Text(
             "Thank you!",
             style = YuyuTheme.typography.displayM,
             color = c.text,
             textAlign = TextAlign.Center,
-            modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
+            modifier = Modifier.appearOnEnter(delayMillis = 60).semantics { heading(); liveRegion = LiveRegionMode.Polite },
         )
         Text(
             state.form?.thankYouMessage?.takeIf { it.isNotBlank() } ?: "Your feedback helps the organisers make the next one even better.",
             style = YuyuTheme.typography.bodyL,
             color = c.textSecondary,
             textAlign = TextAlign.Center,
+            modifier = Modifier.appearOnEnter(delayMillis = 100),
         )
-        if (state.certificateUrl != null) {
-            Text("Your certificate is ready.", style = YuyuTheme.typography.h4, color = c.text)
-            YuyuButton(
-                if (state.certificateSaved) "Saved to Pictures/Yuyu" else "Save certificate",
-                onSave,
-                variant = YuyuButtonVariant.Accent,
-                size = YuyuButtonSize.Large,
-                leadingIcon = Icons.Outlined.Download,
-                loading = state.certificateBusy,
-                enabled = !state.certificateBusy,
-                fullWidth = true,
-            )
-            YuyuButton("Share certificate", onShare, variant = YuyuButtonVariant.Secondary, leadingIcon = Icons.Outlined.Share, enabled = !state.certificateBusy, fullWidth = true)
+        AnimatedRevealValue(state.certificateUrl) {
+            Column(
+                Modifier.fillMaxWidth().appearOnEnter(delayMillis = 140),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text("Your certificate is ready.", style = YuyuTheme.typography.h4, color = c.text)
+                YuyuButton(
+                    if (state.certificateSaved) "Saved to Pictures/Yuyu" else "Save certificate",
+                    onSave,
+                    variant = YuyuButtonVariant.Accent,
+                    size = YuyuButtonSize.Large,
+                    leadingIcon = Icons.Outlined.Download,
+                    loading = state.certificateBusy,
+                    enabled = !state.certificateBusy,
+                    fullWidth = true,
+                )
+                YuyuButton("Share certificate", onShare, variant = YuyuButtonVariant.Secondary, leadingIcon = Icons.Outlined.Share, enabled = !state.certificateBusy, fullWidth = true)
+            }
         }
-        YuyuButton("Done", onDone, variant = YuyuButtonVariant.Quiet)
+        YuyuButton("Done", onDone, variant = YuyuButtonVariant.Quiet, modifier = Modifier.appearOnEnter(delayMillis = 160))
     }
 }
