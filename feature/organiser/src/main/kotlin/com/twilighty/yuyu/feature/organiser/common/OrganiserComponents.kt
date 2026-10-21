@@ -24,6 +24,7 @@ import com.twilighty.yuyu.core.designsystem.component.StatusTone
 import com.twilighty.yuyu.core.designsystem.component.YuyuCard
 import com.twilighty.yuyu.core.designsystem.component.YuyuCardTone
 import com.twilighty.yuyu.core.designsystem.component.YuyuProgressBar
+import com.twilighty.yuyu.core.designsystem.motion.AnimatedCounterText
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.network.model.EventCountsDto
 import androidx.compose.foundation.layout.FlowRow
@@ -48,7 +49,7 @@ fun EventDateBlock(startDateTime: String, timezone: String?, accentColor: String
 @Composable
 fun EventStatusChip(status: String?, modifier: Modifier = Modifier) {
     val label = eventStatusLabel(status)
-    StatusChip(label.text, label.tone, modifier)
+    AnimatedStatusChip(label.text, label.tone, modifier)
 }
 
 /** Capacity bar (event accent) plus the going / waitlist / pending / checked-in line. */
@@ -73,7 +74,8 @@ fun EventCountsSummary(counts: EventCountsDto, accentColor: String?, modifier: M
             if (counts.pending > 0) add("${counts.pending} pending")
             add("${counts.checkedIn} checked in")
         }
-        Text(parts.joinToString(" · "), style = t.caption, color = c.textMuted)
+        // Rolls when a live count changes (someone checks in, a place is taken).
+        AnimatedCounterText(parts.joinToString(" · "), style = t.caption, color = c.textMuted)
     }
 }
 
@@ -119,7 +121,7 @@ fun OrgEventCard(
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     EventStatusChip(status)
-                    if ((counts?.pending ?: 0) > 0) StatusChip("Needs approval", StatusTone.Warning)
+                    RevealVisibility((counts?.pending ?: 0) > 0) { StatusChip("Needs approval", StatusTone.Warning) }
                 }
                 if (counts != null) EventCountsSummary(counts, accentColor, Modifier.fillMaxWidth())
             }

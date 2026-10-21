@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Check
@@ -26,6 +27,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -46,9 +48,14 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuAvatar
 import com.twilighty.yuyu.core.designsystem.component.YuyuBottomSheet
 import com.twilighty.yuyu.core.designsystem.component.YuyuButton
 import com.twilighty.yuyu.core.designsystem.component.YuyuButtonVariant
+import com.twilighty.yuyu.core.designsystem.motion.EntranceState
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
+import com.twilighty.yuyu.core.designsystem.motion.rememberEntranceState
+import com.twilighty.yuyu.core.designsystem.motion.staggeredEntrance
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.designsystem.util.openInBrowser
 import com.twilighty.yuyu.feature.organiser.common.OrgEventCard
+import com.twilighty.yuyu.feature.organiser.common.listItemMotion
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,27 +80,34 @@ fun OrganiserHomeScreen(
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            when {
-                state.loadingOrgs -> LoadingState(label = "Loading your organisations")
-                state.orgs.isEmpty() && state.error != null -> ErrorState(state.error!!, onRetry = viewModel::retry)
-                state.orgs.isEmpty() -> EmptyState(
-                    title = "Nothing to organise yet",
-                    body = "When you join an organisation or are invited to help with an event on the website, it shows up here.",
-                )
-                else -> {
-                    SegmentedControl(
-                        options = EventsFilter.entries.map { it.label },
-                        selectedIndex = state.filter.ordinal,
-                        onSelect = { viewModel.selectFilter(EventsFilter.entries[it]) },
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        YuyuStateTransition(
+            targetState = state,
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentKey = { it.homePhase() },
+            label = "organiserHome",
+        ) { shown ->
+            Column(Modifier.fillMaxSize()) {
+                when (shown.homePhase()) {
+                    HomePhase.Loading -> LoadingState(label = "Loading your organisations")
+                    HomePhase.Error -> ErrorState(shown.error.orEmpty(), onRetry = viewModel::retry)
+                    HomePhase.Empty -> EmptyState(
+                        title = "Nothing to organise yet",
+                        body = "When you join an organisation or are invited to help with an event on the website, it shows up here.",
                     )
-                    PullToRefreshBox(
-                        isRefreshing = state.refreshing,
-                        onRefresh = viewModel::refresh,
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        EventsList(state, onOpenEvent, openDashboard, viewModel::retry)
+                    HomePhase.Content -> {
+                        SegmentedControl(
+                            options = EventsFilter.entries.map { it.label },
+                            selectedIndex = shown.filter.ordinal,
+                            onSelect = { viewModel.selectFilter(EventsFilter.entries[it]) },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                        PullToRefreshBox(
+                            isRefreshing = shown.refreshing,
+                            onRefresh = viewModel::refresh,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            EventsList(shown, onOpenEvent, openDashboard, viewModel::retry)
+                        }
                     }
                 }
             }
@@ -109,6 +123,24 @@ fun OrganiserHomeScreen(
     }
 }
 
+private enum class HomePhase { Loading, Error, Empty, Content }
+
+private fun OrganiserHomeUiState.homePhase(): HomePhase = when {
+    loadingOrgs -> HomePhase.Loading
+    orgs.isEmpty() && error != null -> HomePhase.Error
+    orgs.isEmpty() -> HomePhase.Empty
+    else -> HomePhase.Content
+}
+
+private enum class EventsPhase { Loading, Error, Empty, List }
+
+private fun OrganiserHomeUiState.eventsPhase(): EventsPhase = when {
+    loadingEvents && events.isEmpty() -> EventsPhase.Loading
+    error != null && events.isEmpty() -> EventsPhase.Error
+    events.isEmpty() -> EventsPhase.Empty
+    else -> EventsPhase.List
+}
+
 @Composable
 private fun EventsList(
     state: OrganiserHomeUiState,
@@ -117,12 +149,34 @@ private fun EventsList(
     onRetry: () -> Unit,
 ) {
     val org = state.selectedOrg ?: return
-    when {
-        state.loadingEvents && state.events.isEmpty() -> LoadingState(label = "Loading events")
-        state.error != null && state.events.isEmpty() -> LazyColumn(Modifier.fillMaxSize()) {
-            item { ErrorState(state.error, onRetry = onRetry) }
+    // One entrance per organisation and filter, so a new list rises in once.
+    val entrance = key(org.slug, state.filter) { rememberEntranceState() }
+    YuyuStateTransition(
+        targetState = state,
+        modifier = Modifier.fillMaxSize(),
+        // Switching filter or organisation cross-fades the list instead of swapping it.
+        contentKey = { it.eventsPhase() to (it.selectedOrg?.slug to it.filter) },
+        label = "events",
+    ) { shown ->
+        EventsListBody(shown, org, entrance, onOpenEvent, openDashboard, onRetry)
+    }
+}
+
+@Composable
+private fun EventsListBody(
+    state: OrganiserHomeUiState,
+    org: OrgOption,
+    entrance: EntranceState,
+    onOpenEvent: (String, String) -> Unit,
+    openDashboard: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    when (state.eventsPhase()) {
+        EventsPhase.Loading -> LoadingState(label = "Loading events")
+        EventsPhase.Error -> LazyColumn(Modifier.fillMaxSize()) {
+            item { ErrorState(state.error.orEmpty(), onRetry = onRetry) }
         }
-        state.events.isEmpty() -> LazyColumn(Modifier.fillMaxSize()) {
+        EventsPhase.Empty -> LazyColumn(Modifier.fillMaxSize()) {
             item {
                 EmptyState(
                     title = when (state.filter) {
@@ -140,15 +194,15 @@ private fun EventsList(
                 )
             }
         }
-        else -> LazyColumn(
+        EventsPhase.List -> LazyColumn(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (org.isCollaboration) {
-                item { SectionHeader("Events you help with") }
+                item(key = "header") { SectionHeader("Events you help with") }
             }
-            items(state.events, key = { it.id }) { event ->
+            itemsIndexed(state.events, key = { _, event -> event.id }) { index, event ->
                 OrgEventCard(
                     title = event.title,
                     startDateTime = event.startDateTime,
@@ -160,16 +214,18 @@ private fun EventsList(
                     isOnline = event.isOnline,
                     counts = event.counts,
                     onClick = { onOpenEvent(event.organisation.slug, event.id) },
+                    modifier = listItemMotion().staggeredEntrance(entrance, event.id, index),
                 )
             }
             if (!org.isCollaboration) {
-                item {
+                item(key = "dashboard") {
                     YuyuButton(
                         "Open dashboard on the web",
                         openDashboard,
                         variant = YuyuButtonVariant.Quiet,
                         trailingIcon = Icons.AutoMirrored.Outlined.OpenInNew,
                         fullWidth = true,
+                        modifier = listItemMotion().staggeredEntrance(entrance, "dashboard", state.events.size),
                     )
                 }
             }

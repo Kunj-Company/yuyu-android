@@ -60,6 +60,7 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuTextField
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.network.model.GuestDetailDto
 import com.twilighty.yuyu.core.network.model.GuestDto
+import com.twilighty.yuyu.feature.organiser.common.AnimatedStatusChip
 import com.twilighty.yuyu.feature.organiser.common.RsvpStatus
 import com.twilighty.yuyu.feature.organiser.common.checkedInLabel
 import com.twilighty.yuyu.feature.organiser.common.guestStatusLabel
@@ -68,7 +69,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun GuestStatusChip(status: String, modifier: Modifier = Modifier) {
     val label = guestStatusLabel(status)
-    StatusChip(label.text, label.tone, modifier)
+    AnimatedStatusChip(label.text, label.tone, modifier)
 }
 
 /**
