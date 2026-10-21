@@ -2,6 +2,21 @@ package com.twilighty.yuyu.feature.broadcasts.compose
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -83,11 +98,18 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuFilterChip
 import com.twilighty.yuyu.core.designsystem.component.YuyuIconButton
 import com.twilighty.yuyu.core.designsystem.component.YuyuSnackbarHost
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.AnimatedCounterText
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
+import com.twilighty.yuyu.core.designsystem.motion.appearOnEnter
 import com.twilighty.yuyu.core.designsystem.theme.YuyuRadius
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.network.model.BroadcastDesignDto
 import com.twilighty.yuyu.core.network.model.BroadcastTemplateDto
 import com.twilighty.yuyu.feature.broadcasts.BroadcastCopy
+import com.twilighty.yuyu.feature.broadcasts.RevealVisibility
+import com.twilighty.yuyu.feature.broadcasts.popIn
 import com.twilighty.yuyu.feature.broadcasts.editor.EmailHtml
 import com.twilighty.yuyu.feature.broadcasts.editor.RichEmailEditor
 import java.text.NumberFormat
@@ -148,31 +170,46 @@ fun BroadcastComposeScreen(
             )
         },
         bottomBar = {
-            if (state.sentCount == null && !state.metaLoading && state.metaError == null) SendBar(viewModel, state)
+            val reduced = LocalReducedMotion.current
+            AnimatedVisibility(
+                visible = state.sentCount == null && !state.metaLoading && state.metaError == null,
+                enter = if (reduced) EnterTransition.None else slideInVertically(YuyuSpecs.settle()) { it } + fadeIn(YuyuSpecs.quick()),
+                exit = if (reduced) ExitTransition.None else slideOutVertically(YuyuSpecs.standard()) { it } + fadeOut(YuyuSpecs.quick()),
+                label = "sendBar",
+            ) {
+                SendBar(viewModel, state)
+            }
         },
         snackbarHost = { YuyuSnackbarHost(snackbar) },
         containerColor = YuyuTheme.colors.bgCanvas,
     ) { padding ->
-        val sentCount = state.sentCount
-        when {
-            sentCount != null -> MessageState(
-                mood = DotFaceMood.Cheering,
-                title = "Your email is on its way",
-                body = "Queued for ${BroadcastCopy.people(sentCount)}. Messages go out in the background, a few at a time, so large audiences take a few minutes.",
-                actionLabel = "Write another",
-                onAction = viewModel::startAnother,
-                secondaryLabel = "Done",
-                onSecondary = onBack,
-                modifier = Modifier.padding(padding),
-            )
-            state.metaLoading && state.templates.isEmpty() -> LoadingState(Modifier.padding(padding), label = "Loading email tools")
-            state.metaError != null && state.templates.isEmpty() -> ErrorState(
-                state.metaError!!,
-                Modifier.padding(padding),
-                title = "Couldn't load emails",
-                onRetry = viewModel::retryMeta,
-            )
-            else -> ComposeForm(viewModel, state, Modifier.padding(padding), onShowAllTemplates = { showAllTemplates = true }, onOpenPreview = onOpenPreview)
+        // Sending → sent is a whole-screen change: the form fades through to the success state.
+        YuyuStateTransition(
+            targetState = state,
+            modifier = Modifier.padding(padding),
+            contentKey = { it.phase() },
+            label = "compose",
+        ) { shown ->
+            val sentCount = shown.sentCount
+            when {
+                sentCount != null -> MessageState(
+                    mood = DotFaceMood.Cheering,
+                    title = "Your email is on its way",
+                    body = "Queued for ${BroadcastCopy.people(sentCount)}. Messages go out in the background, a few at a time, so large audiences take a few minutes.",
+                    actionLabel = "Write another",
+                    onAction = viewModel::startAnother,
+                    secondaryLabel = "Done",
+                    onSecondary = onBack,
+                    modifier = Modifier.popIn(),
+                )
+                shown.metaLoading && shown.templates.isEmpty() -> LoadingState(label = "Loading email tools")
+                shown.metaError != null && shown.templates.isEmpty() -> ErrorState(
+                    shown.metaError,
+                    title = "Couldn't load emails",
+                    onRetry = viewModel::retryMeta,
+                )
+                else -> ComposeForm(viewModel, shown, Modifier, onShowAllTemplates = { showAllTemplates = true }, onOpenPreview = onOpenPreview)
+            }
         }
     }
 
@@ -220,6 +257,15 @@ fun BroadcastComposeScreen(
     }
 }
 
+private enum class ComposePhase { Sent, Loading, Error, Form }
+
+private fun BroadcastComposeUiState.phase(): ComposePhase = when {
+    sentCount != null -> ComposePhase.Sent
+    metaLoading && templates.isEmpty() -> ComposePhase.Loading
+    metaError != null && templates.isEmpty() -> ComposePhase.Error
+    else -> ComposePhase.Form
+}
+
 @Composable
 private fun StepHeading(step: Int, title: String, aside: String? = null) {
     val c = YuyuTheme.colors
@@ -249,7 +295,7 @@ private fun ComposeForm(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-        YuyuCard(tone = YuyuCardTone.Subtle) {
+        YuyuCard(Modifier.appearOnEnter(), tone = YuyuCardTone.Subtle) {
             Text(
                 "Emails go only to people who already registered for this event. They're queued and delivered in the background. Send yourself a test first.",
                 style = YuyuTheme.typography.bodyUi,
@@ -258,7 +304,7 @@ private fun ComposeForm(
         }
 
         // 1. Template
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.appearOnEnter(delayMillis = 30), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             StepHeading(1, "Pick a starting point", "Everything stays editable.")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 BroadcastCopy.featuredTemplates(state.templates).forEach { template ->
@@ -281,7 +327,7 @@ private fun ComposeForm(
         }
 
         // 2. Audience
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.appearOnEnter(delayMillis = 60), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             StepHeading(2, "Who gets it")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 BroadcastCopy.STATUSES.forEach { status ->
@@ -299,11 +345,16 @@ private fun ComposeForm(
                 onSelect = { if (editable) viewModel.setAttendance(BroadcastCopy.ATTENDANCE[it]) },
             )
             RecipientLine(state, onRetry = viewModel::retryCount)
-            state.audienceError?.let { Text(it, style = YuyuTheme.typography.caption, color = c.dangerFg) }
+            val audienceError = state.audienceError
+            val lastAudienceError = remember { arrayOf("") }
+            if (audienceError != null) lastAudienceError[0] = audienceError
+            RevealVisibility(audienceError != null) {
+                Text(lastAudienceError[0], style = YuyuTheme.typography.caption, color = c.dangerFg)
+            }
         }
 
         // 3. Message
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.appearOnEnter(delayMillis = 90), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             StepHeading(3, "Write it")
             SubjectField(
                 value = viewModel.subject,
@@ -350,8 +401,8 @@ private fun ComposeForm(
             }
         }
 
-        // 4. Design
-        if (state.designs.isNotEmpty()) {
+        // 4. Design (expands in when the designs arrive)
+        RevealVisibility(state.designs.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 StepHeading(4, "Choose a design", "Designs change only the frame around your message.")
                 Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -382,24 +433,48 @@ private fun RecipientLine(state: BroadcastComposeUiState, onRetry: () -> Unit) {
             .fillMaxWidth()
             .clip(YuyuRadius.medium)
             .background(c.bgSubtle)
+            .animateContentSize(YuyuSpecs.standard())
             .padding(horizontal = 14.dp, vertical = 12.dp)
             .semantics { liveRegion = LiveRegionMode.Polite },
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        when (val count = state.count) {
-            RecipientCount.Counting -> Text("Counting recipients…", style = YuyuTheme.typography.bodyUi, color = c.textSecondary)
-            is RecipientCount.Failed -> {
-                Text(count.message, style = YuyuTheme.typography.bodyUi, color = c.dangerFg)
-                YuyuButton("Count again", onRetry, variant = YuyuButtonVariant.Quiet)
-            }
-            is RecipientCount.Ready -> {
-                Text(BroadcastCopy.recipientLine(count.count), style = YuyuTheme.typography.bodyUiMedium, color = c.text)
-                if (count.count > 0) {
-                    Text(
-                        "Matches ${BroadcastCopy.describeAudience(state.statuses, state.attendance)}. Someone who registered twice still gets one email.",
-                        style = YuyuTheme.typography.caption,
-                        color = c.textMuted,
-                    )
+        val reduced = LocalReducedMotion.current
+        // Counting / failed / ready cross-fade; within "ready" the number rolls as the audience changes.
+        AnimatedContent(
+            targetState = state.count,
+            contentKey = { it::class },
+            transitionSpec = {
+                (if (reduced) EnterTransition.None togetherWith ExitTransition.None else fadeIn(YuyuSpecs.quick()) togetherWith fadeOut(YuyuSpecs.quick()))
+                    .using(SizeTransform(clip = false) { _, _ -> YuyuSpecs.standard() })
+            },
+            label = "recipients",
+        ) { count ->
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                when (count) {
+                    RecipientCount.Counting -> Text("Counting recipients…", style = YuyuTheme.typography.bodyUi, color = c.textSecondary)
+                    is RecipientCount.Failed -> {
+                        Text(count.message, style = YuyuTheme.typography.bodyUi, color = c.dangerFg)
+                        YuyuButton("Count again", onRetry, variant = YuyuButtonVariant.Quiet)
+                    }
+                    is RecipientCount.Ready -> {
+                        AnimatedCounterText(BroadcastCopy.recipientLine(count.count), style = YuyuTheme.typography.bodyUiMedium, color = c.text)
+                        val audience = BroadcastCopy.describeAudience(state.statuses, state.attendance)
+                        RevealVisibility(count.count > 0) {
+                            AnimatedContent(
+                                targetState = audience,
+                                transitionSpec = {
+                                    if (reduced) EnterTransition.None togetherWith ExitTransition.None else fadeIn(YuyuSpecs.quick()) togetherWith fadeOut(YuyuSpecs.quick())
+                                },
+                                label = "audience",
+                            ) { shownAudience ->
+                                Text(
+                                    "Matches $shownAudience. Someone who registered twice still gets one email.",
+                                    style = YuyuTheme.typography.caption,
+                                    color = c.textMuted,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -440,12 +515,15 @@ private fun SubjectField(value: TextFieldValue, onValueChange: (TextFieldValue) 
 @Composable
 private fun TemplateCard(template: BroadcastTemplateDto, selected: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = YuyuTheme.colors
+    val bg by animateColorAsState(if (selected) c.tintPeach else c.bgCanvas, YuyuSpecs.quick(), label = "templateBg")
+    val borderColor by animateColorAsState(if (selected) c.primary else c.border, YuyuSpecs.quick(), label = "templateBorder")
+    val borderWidth by animateDpAsState(if (selected) 2.dp else 1.dp, YuyuSpecs.quick(), label = "templateBorderWidth")
     Column(
         modifier
             .heightIn(min = 104.dp)
             .clip(YuyuRadius.large)
-            .background(if (selected) c.tintPeach else c.bgCanvas)
-            .border(if (selected) 2.dp else 1.dp, if (selected) c.primary else c.border, YuyuRadius.large)
+            .background(bg)
+            .border(borderWidth, borderColor, YuyuRadius.large)
             .selectable(selected = selected, enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -474,12 +552,15 @@ private fun TemplatesSheet(templates: List<BroadcastTemplateDto>, selectedId: St
 @Composable
 private fun DesignCard(design: BroadcastDesignDto, selected: Boolean, enabled: Boolean, onSelect: () -> Unit) {
     val c = YuyuTheme.colors
+    val reduced = LocalReducedMotion.current
+    val borderColor by animateColorAsState(if (selected) c.primary else c.border, YuyuSpecs.quick(), label = "designBorder")
+    val borderWidth by animateDpAsState(if (selected) 2.dp else 1.dp, YuyuSpecs.quick(), label = "designBorderWidth")
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
             .clip(YuyuRadius.large)
-            .border(if (selected) 2.dp else 1.dp, if (selected) c.primary else c.border, YuyuRadius.large)
+            .border(borderWidth, borderColor, YuyuRadius.large)
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect)
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -489,7 +570,13 @@ private fun DesignCard(design: BroadcastDesignDto, selected: Boolean, enabled: B
             Text(design.label, style = YuyuTheme.typography.bodyUiMedium, color = c.text)
             design.description?.let { Text(it, style = YuyuTheme.typography.caption, color = c.textMuted) }
         }
-        if (selected) Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = c.primary)
+        AnimatedVisibility(
+            visible = selected,
+            enter = if (reduced) EnterTransition.None else fadeIn(YuyuSpecs.quick()) + scaleIn(YuyuSpecs.settle(), initialScale = 0.6f),
+            exit = if (reduced) ExitTransition.None else fadeOut(YuyuSpecs.quick()) + scaleOut(YuyuSpecs.quick(), targetScale = 0.6f),
+        ) {
+            Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = c.primary)
+        }
     }
 }
 
@@ -497,59 +584,84 @@ private fun DesignCard(design: BroadcastDesignDto, selected: Boolean, enabled: B
 private fun SendBar(viewModel: BroadcastComposeViewModel, state: BroadcastComposeUiState) {
     val c = YuyuTheme.colors
     val countdown = state.countdownSeconds
+    val reduced = LocalReducedMotion.current
+    // Keeps the last second shown while the countdown pill fades out.
+    val lastCountdown = remember { intArrayOf(0) }
+    countdown?.let { lastCountdown[0] = it }
     Column(Modifier.fillMaxWidth().background(c.bgCanvas).navigationBarsPadding()) {
         Box(Modifier.fillMaxWidth().size(1.dp).background(c.border))
-        if (countdown != null) {
-            Row(
-                Modifier
-                    .padding(12.dp)
-                    .fillMaxWidth()
-                    .clip(YuyuRadius.pill)
-                    .background(c.inverseSurface)
-                    .padding(start = 20.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
-                    .semantics { liveRegion = LiveRegionMode.Polite },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Sending to ${BroadcastCopy.people(state.pendingSendCount)} in $countdown…",
-                    style = YuyuTheme.typography.bodyUiMedium,
-                    color = c.onInverse,
-                    modifier = Modifier.weight(1f),
-                )
-                YuyuButton("Undo", viewModel::undoSend, variant = YuyuButtonVariant.Inverse)
+        // Ready → countdown → sending: the bar morphs between its two forms.
+        AnimatedContent(
+            targetState = countdown != null,
+            transitionSpec = {
+                if (reduced) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else {
+                    (fadeIn(YuyuSpecs.standard(220, delayMillis = 60)) + scaleIn(YuyuSpecs.settle(), initialScale = 0.96f)) togetherWith
+                        fadeOut(YuyuSpecs.quick()) using SizeTransform(clip = false) { _, _ -> YuyuSpecs.standard() }
+                }
+            },
+            label = "sendBar",
+        ) { counting ->
+            if (counting) {
+                Row(
+                    Modifier
+                        .padding(12.dp)
+                        .fillMaxWidth()
+                        .clip(YuyuRadius.pill)
+                        .background(c.inverseSurface)
+                        .padding(start = 20.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // The seconds roll down as the undo window runs out.
+                    AnimatedCounterText(
+                        "Sending to ${BroadcastCopy.people(state.pendingSendCount)} in ${lastCountdown[0]}…",
+                        style = YuyuTheme.typography.bodyUiMedium,
+                        color = c.onInverse,
+                        modifier = Modifier.weight(1f),
+                    )
+                    YuyuButton("Undo", viewModel::undoSend, variant = YuyuButtonVariant.Inverse)
+                }
+            } else {
+                ReadyBar(viewModel, state)
             }
-            return@Column
         }
-        val blocker = viewModel.blocker()
-        val count = state.recipientCount ?: 0
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                if (state.sending) "Sending…" else blocker ?: "Ready to send to ${BroadcastCopy.people(count)}",
-                style = YuyuTheme.typography.caption,
-                color = c.textSecondary,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    }
+}
+
+@Composable
+private fun ReadyBar(viewModel: BroadcastComposeViewModel, state: BroadcastComposeUiState) {
+    val c = YuyuTheme.colors
+    val blocker = viewModel.blocker()
+    val count = state.recipientCount ?: 0
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        AnimatedCounterText(
+            if (state.sending) "Sending…" else blocker ?: "Ready to send to ${BroadcastCopy.people(count)}",
+            style = YuyuTheme.typography.caption,
+            color = c.textSecondary,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            YuyuButton(
+                "Send me a test",
+                viewModel::sendTest,
+                variant = YuyuButtonVariant.Secondary,
+                leadingIcon = Icons.Outlined.Science,
+                loading = state.testSending,
+                loadingText = "Sending test",
+                enabled = !state.sendPending,
+                modifier = Modifier.weight(1f),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                YuyuButton(
-                    "Send me a test",
-                    viewModel::sendTest,
-                    variant = YuyuButtonVariant.Secondary,
-                    leadingIcon = Icons.Outlined.Science,
-                    loading = state.testSending,
-                    loadingText = "Sending test",
-                    enabled = !state.sendPending,
-                    modifier = Modifier.weight(1f),
-                )
-                YuyuButton(
-                    if (blocker == null && count > 0) "Send to ${BroadcastCopy.people(count)}" else "Send",
-                    viewModel::openReview,
-                    leadingIcon = Icons.AutoMirrored.Outlined.Send,
-                    enabled = blocker == null,
-                    loading = state.sending,
-                    loadingText = "Sending",
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            YuyuButton(
+                if (blocker == null && count > 0) "Send to ${BroadcastCopy.people(count)}" else "Send",
+                viewModel::openReview,
+                leadingIcon = Icons.AutoMirrored.Outlined.Send,
+                enabled = blocker == null,
+                loading = state.sending,
+                loadingText = "Sending",
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
