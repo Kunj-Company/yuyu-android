@@ -60,11 +60,15 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuCard
 import com.twilighty.yuyu.core.designsystem.component.YuyuIconButton
 import com.twilighty.yuyu.core.designsystem.component.YuyuSnackbarHost
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
+import com.twilighty.yuyu.core.designsystem.motion.appearOnEnter
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.designsystem.util.openInBrowser
 import com.twilighty.yuyu.core.network.model.EventCountsDto
 import com.twilighty.yuyu.core.network.model.OrgEventDetailResponseDto
+import com.twilighty.yuyu.feature.organiser.common.AnimatedStatusChip
 import com.twilighty.yuyu.feature.organiser.common.EventDateBlock
+import com.twilighty.yuyu.feature.organiser.common.RevealVisibility
 import com.twilighty.yuyu.feature.organiser.common.EventStatusChip
 import com.twilighty.yuyu.feature.organiser.common.copyText
 import com.twilighty.yuyu.feature.organiser.common.eventDateLine
@@ -98,26 +102,41 @@ fun EventHomeScreen(
         snackbarHost = { YuyuSnackbarHost(snackbar) },
         containerColor = YuyuTheme.colors.bgCanvas,
     ) { padding ->
-        val detail = state.detail
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            when {
-                state.loading -> LoadingState(label = "Loading event")
-                detail == null -> ErrorState(state.error ?: "We couldn't load this event.", onRetry = viewModel::retry)
-                else -> PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = viewModel::refresh, modifier = Modifier.fillMaxSize()) {
-                    EventHomeContent(
-                        detail = detail,
-                        actions = state.actions,
-                        snackbar = snackbar,
-                        onOpenScanner = onOpenScanner,
-                        onOpenGuests = onOpenGuests,
-                        onOpenEmails = onOpenEmails,
-                        onOpenDayOf = onOpenDayOf,
-                        onOpenWeb = { viewModel.dashboardUrl()?.let { openInBrowser(context, it) } },
-                    )
+        YuyuStateTransition(
+            targetState = state,
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentKey = { it.phase() },
+            label = "eventHome",
+        ) { shown ->
+            val detail = shown.detail
+            Column(Modifier.fillMaxSize()) {
+                when {
+                    shown.loading -> LoadingState(label = "Loading event")
+                    detail == null -> ErrorState(shown.error ?: "We couldn't load this event.", onRetry = viewModel::retry)
+                    else -> PullToRefreshBox(isRefreshing = shown.refreshing, onRefresh = viewModel::refresh, modifier = Modifier.fillMaxSize()) {
+                        EventHomeContent(
+                            detail = detail,
+                            actions = shown.actions,
+                            snackbar = snackbar,
+                            onOpenScanner = onOpenScanner,
+                            onOpenGuests = onOpenGuests,
+                            onOpenEmails = onOpenEmails,
+                            onOpenDayOf = onOpenDayOf,
+                            onOpenWeb = { viewModel.dashboardUrl()?.let { openInBrowser(context, it) } },
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+private enum class EventPhase { Loading, Error, Content }
+
+private fun EventHomeUiState.phase(): EventPhase = when {
+    loading -> EventPhase.Loading
+    detail == null -> EventPhase.Error
+    else -> EventPhase.Content
 }
 
 @Composable
@@ -151,21 +170,24 @@ private fun EventHomeContent(
                 .widthIn(max = 1000.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
+            Row(Modifier.appearOnEnter(), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
                 EventDateBlock(event.startDateTime, event.timezone, event.accentColor, draft = event.status == "DRAFT", modifier = Modifier)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(event.title, style = t.h2, color = c.text, modifier = Modifier.semantics { heading() })
                     Text(eventDateLine(event.startDateTime, event.endDateTime, event.timezone), style = t.bodyUi, color = c.textSecondary)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         EventStatusChip(event.status)
-                        if (!event.registrationOpen) StatusChip("Sign-ups closed", StatusTone.Neutral)
+                        RevealVisibility(!event.registrationOpen) { StatusChip("Sign-ups closed", StatusTone.Neutral) }
                     }
                 }
             }
 
             val links = listOfNotNull(event.eventUrl?.let { "Event link" to it }, event.shortUrl?.let { "Short link" to it })
             if (links.isNotEmpty()) {
-                YuyuCard(contentPadding = PaddingValues(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp)) {
+                YuyuCard(
+                    modifier = Modifier.appearOnEnter(delayMillis = 30),
+                    contentPadding = PaddingValues(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                ) {
                     links.forEach { (label, url) ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
@@ -186,7 +208,7 @@ private fun EventHomeContent(
 
             val counts = detail.counts
             if (counts != null) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.appearOnEnter(delayMillis = 60), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SectionHeader("At a glance")
                     StatGrid(counts, event.accentColor, columns)
                 }
@@ -202,7 +224,7 @@ private fun EventHomeContent(
                 if (actions.dayOf) add(ActionTileSpec("Day-of controls", "Running late, feedback, sign-ups", Icons.Outlined.Tune, null, onOpenDayOf))
             }
             if (tiles.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.appearOnEnter(delayMillis = 90), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SectionHeader("Actions")
                     tiles.chunked(if (columns >= 4) 4 else 2).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -216,6 +238,7 @@ private fun EventHomeContent(
             YuyuButton(
                 "Open full dashboard on web",
                 onOpenWeb,
+                modifier = Modifier.appearOnEnter(delayMillis = 100),
                 variant = YuyuButtonVariant.Quiet,
                 trailingIcon = Icons.AutoMirrored.Outlined.OpenInNew,
                 fullWidth = true,
@@ -275,7 +298,13 @@ private fun ActionTile(spec: ActionTileSpec, modifier: Modifier = Modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(spec.icon, contentDescription = null, tint = c.text, modifier = Modifier.size(28.dp))
             Spacer(Modifier.weight(1f))
-            if (spec.badge != null) StatusChip("${spec.badge} pending", StatusTone.Warning, icon = null)
+            // The pending count pops in when approvals arrive and cross-fades as it changes.
+            RevealVisibility(spec.badge != null) {
+                // Keep the last count while the chip fades out.
+                val lastBadge = remember { intArrayOf(0) }
+                spec.badge?.let { lastBadge[0] = it }
+                AnimatedStatusChip("${lastBadge[0]} pending", StatusTone.Warning, showIcon = false)
+            }
         }
         Spacer(Modifier.height(12.dp))
         Text(spec.title, style = t.h4, color = c.text)

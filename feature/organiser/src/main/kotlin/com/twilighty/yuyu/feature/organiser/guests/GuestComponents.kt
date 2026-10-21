@@ -1,5 +1,15 @@
 package com.twilighty.yuyu.feature.organiser.guests
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +43,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.customActions
@@ -49,6 +61,10 @@ import com.twilighty.yuyu.core.designsystem.component.ConfirmDialog
 import com.twilighty.yuyu.core.designsystem.component.DialogActions
 import com.twilighty.yuyu.core.designsystem.component.SectionHeader
 import com.twilighty.yuyu.core.designsystem.component.StatusChip
+import com.twilighty.yuyu.core.designsystem.component.StatusTone
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.appearOnEnter
 import com.twilighty.yuyu.core.designsystem.component.YuyuAvatar
 import com.twilighty.yuyu.core.designsystem.component.YuyuBottomSheet
 import com.twilighty.yuyu.core.designsystem.component.YuyuButton
@@ -60,7 +76,10 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuTextField
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.network.model.GuestDetailDto
 import com.twilighty.yuyu.core.network.model.GuestDto
+import com.twilighty.yuyu.feature.organiser.common.AnimatedStatusChip
+import com.twilighty.yuyu.feature.organiser.common.RevealVisibility
 import com.twilighty.yuyu.feature.organiser.common.RsvpStatus
+import com.twilighty.yuyu.feature.organiser.common.rememberChangeFlash
 import com.twilighty.yuyu.feature.organiser.common.checkedInLabel
 import com.twilighty.yuyu.feature.organiser.common.guestStatusLabel
 import kotlinx.coroutines.launch
@@ -68,7 +87,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun GuestStatusChip(status: String, modifier: Modifier = Modifier) {
     val label = guestStatusLabel(status)
-    StatusChip(label.text, label.tone, modifier)
+    AnimatedStatusChip(label.text, label.tone, modifier)
 }
 
 /**
@@ -168,10 +187,19 @@ private fun GuestRowContent(
         if (actions.promote) add(CustomAccessibilityAction("Give a spot") { onPromote(); true })
         if (actions.remove) add(CustomAccessibilityAction("Remove RSVP") { onRemove(); true })
     }
+    // A brief tint in the new status's colour confirms an approval, decline or check-in.
+    val flash = rememberChangeFlash(guest.status to guest.checkedInAt)
+    val base by animateColorAsState(if (selected) c.bgMuted else c.bgCanvas, YuyuSpecs.quick(), label = "rowSelected")
+    val tint = when (guestStatusLabel(guest.status).tone) {
+        StatusTone.Success -> c.successBg
+        StatusTone.Warning -> c.warningBg
+        StatusTone.Danger -> c.dangerBg
+        StatusTone.Neutral -> c.bgMuted
+    }
     Column(
         modifier
             .fillMaxWidth()
-            .background(if (selected) c.bgMuted else c.bgCanvas)
+            .drawBehind { drawRect(lerp(base, tint, flash.value)) }
             .clickable(onClickLabel = "Open $name", onClick = onClick)
             .semantics {
                 this.selected = selected
@@ -185,8 +213,9 @@ private fun GuestRowContent(
             Column(Modifier.weight(1f)) {
                 Text(name, style = t.bodyUiMedium, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 guest.email?.let { Text(it, style = t.caption, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                checkedInLabel(guest.checkedInAt, timezone)?.let {
-                    Text(it, style = t.caption, color = c.successFg)
+                val checkedIn = checkedInLabel(guest.checkedInAt, timezone)
+                RevealVisibility(checkedIn != null) {
+                    Text(checkedIn.orEmpty(), style = t.caption, color = c.successFg)
                 }
             }
             GuestStatusChip(guest.status)
@@ -230,6 +259,7 @@ fun GuestDetailContent(
 ) {
     val c = YuyuTheme.colors
     val t = YuyuTheme.typography
+    val reduced = LocalReducedMotion.current
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             YuyuAvatar(guest.displayName, size = 56.dp)
@@ -238,12 +268,19 @@ fun GuestDetailContent(
                 guest.email?.let { Text(it, style = t.bodyUi, color = c.textMuted) }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.appearOnEnter(delayMillis = 30), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GuestStatusChip(guest.status)
-            if (guest.checkedInAt != null) StatusChip("Checked in", com.twilighty.yuyu.core.designsystem.component.StatusTone.Success)
+            // Checking someone in is a real success: the chip pops in.
+            AnimatedVisibility(
+                visible = guest.checkedInAt != null,
+                enter = if (reduced) EnterTransition.None else fadeIn(YuyuSpecs.quick()) + scaleIn(YuyuSpecs.pop(), initialScale = 0.6f),
+                exit = if (reduced) ExitTransition.None else fadeOut(YuyuSpecs.quick()),
+            ) {
+                StatusChip("Checked in", StatusTone.Success)
+            }
         }
 
-        YuyuCard {
+        YuyuCard(Modifier.appearOnEnter(delayMillis = 60).animateContentSize(YuyuSpecs.standard())) {
             DetailLine("Status", guestStatusLabel(guest.status).text)
             HorizontalDivider(color = c.border, modifier = Modifier.padding(vertical = 8.dp))
             DetailLine("Registered", formatMoment(guest.registeredAt, timezone) ?: "—")
@@ -258,21 +295,22 @@ fun GuestDetailContent(
             }
         }
 
-        if (showCheckIn) {
+        // Actions fold away once they're done (checked in, approved, given a spot).
+        RevealVisibility(showCheckIn) {
             YuyuButton("Check in", onCheckIn, leadingIcon = Icons.Outlined.HowToReg, fullWidth = true, loading = busy, loadingText = "Checking in…")
         }
-        if (actions.approveDecline) {
+        RevealVisibility(actions.approveDecline) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 YuyuButton("Approve", onApprove, Modifier.weight(1f), variant = YuyuButtonVariant.Secondary, leadingIcon = Icons.Outlined.CheckCircle, enabled = !busy, fullWidth = true)
                 YuyuButton("Decline", onDecline, Modifier.weight(1f), variant = YuyuButtonVariant.DangerQuiet, enabled = !busy, fullWidth = true)
             }
         }
-        if (actions.promote) {
+        RevealVisibility(actions.promote) {
             YuyuButton("Give a spot", onPromote, variant = YuyuButtonVariant.Secondary, enabled = !busy, fullWidth = true)
         }
 
         if (guest.answers.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.appearOnEnter(delayMillis = 90), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SectionHeader("Registration answers")
                 YuyuCard {
                     guest.answers.forEachIndexed { index, answer ->
@@ -297,7 +335,15 @@ private fun DetailLine(label: String, value: String) {
     val t = YuyuTheme.typography
     Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(label, style = t.bodyUi, color = c.textMuted, modifier = Modifier.weight(0.4f))
-        Text(value, style = t.bodyUiMedium, color = c.text, modifier = Modifier.weight(0.6f))
+        val reduced = LocalReducedMotion.current
+        AnimatedContent(
+            targetState = value,
+            modifier = Modifier.weight(0.6f),
+            transitionSpec = {
+                if (reduced) EnterTransition.None togetherWith ExitTransition.None else fadeIn(YuyuSpecs.quick()) togetherWith fadeOut(YuyuSpecs.quick())
+            },
+            label = "detailValue",
+        ) { shown -> Text(shown, style = t.bodyUiMedium, color = c.text) }
     }
 }
 

@@ -1,6 +1,14 @@
 package com.twilighty.yuyu.feature.organiser.dayof
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -29,6 +37,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -44,7 +54,6 @@ import com.twilighty.yuyu.core.designsystem.component.ErrorState
 import com.twilighty.yuyu.core.designsystem.component.ListRow
 import com.twilighty.yuyu.core.designsystem.component.LoadingState
 import com.twilighty.yuyu.core.designsystem.component.SectionHeader
-import com.twilighty.yuyu.core.designsystem.component.StatusChip
 import com.twilighty.yuyu.core.designsystem.component.StatusTone
 import com.twilighty.yuyu.core.designsystem.component.YuyuBottomSheet
 import com.twilighty.yuyu.core.designsystem.component.YuyuButton
@@ -56,7 +65,13 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuSnackbarHost
 import com.twilighty.yuyu.core.designsystem.component.YuyuSwitchRow
 import com.twilighty.yuyu.core.designsystem.component.YuyuTextField
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
+import com.twilighty.yuyu.core.designsystem.motion.appearOnEnter
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
+import com.twilighty.yuyu.feature.organiser.common.AnimatedStatusChip
+import com.twilighty.yuyu.feature.organiser.common.RevealVisibility
 import com.twilighty.yuyu.core.network.model.RegistrationStateDto
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
@@ -85,39 +100,52 @@ fun DayOfScreen(
         snackbarHost = { YuyuSnackbarHost(snackbar) },
         containerColor = YuyuTheme.colors.bgCanvas,
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            when {
-                state.loading -> LoadingState(label = "Loading day-of controls")
-                state.error != null -> ErrorState(state.error!!, onRetry = viewModel::retry)
-                !state.hasAnySection -> EmptyState(
-                    title = "Nothing to control here",
-                    body = "Day-of controls are for organisation admins and people who manage the programme.",
-                )
-                else -> PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = viewModel::refresh, modifier = Modifier.fillMaxSize()) {
-                    Column(
-                        Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .widthIn(max = 840.dp),
-                        verticalArrangement = Arrangement.spacedBy(24.dp),
-                    ) {
-                        if (state.showSchedule) {
-                            RunningLateSection(state, onSessionClick = viewModel::openDelay, onRetry = viewModel::refresh)
+        YuyuStateTransition(
+            targetState = state,
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentKey = { it.phase() },
+            label = "dayOf",
+        ) { shown ->
+            Column(Modifier.fillMaxSize()) {
+                when (shown.phase()) {
+                    DayOfPhase.Loading -> LoadingState(label = "Loading day-of controls")
+                    DayOfPhase.Error -> ErrorState(shown.error.orEmpty(), onRetry = viewModel::retry)
+                    DayOfPhase.Empty -> EmptyState(
+                        title = "Nothing to control here",
+                        body = "Day-of controls are for organisation admins and people who manage the programme.",
+                    )
+                    DayOfPhase.Content -> PullToRefreshBox(isRefreshing = shown.refreshing, onRefresh = viewModel::refresh, modifier = Modifier.fillMaxSize()) {
+                        Column(
+                            Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .widthIn(max = 840.dp),
+                            verticalArrangement = Arrangement.spacedBy(24.dp),
+                        ) {
+                            if (shown.showSchedule) {
+                                Box(Modifier.appearOnEnter()) {
+                                    RunningLateSection(shown, onSessionClick = viewModel::openDelay, onRetry = viewModel::refresh)
+                                }
+                            }
+                            if (shown.showFeedback) {
+                                Box(Modifier.appearOnEnter(delayMillis = 40)) {
+                                    FeedbackSection(open = shown.feedbackOpen, saving = shown.feedbackSaving, onToggle = viewModel::onFeedbackToggle)
+                                }
+                            }
+                            if (shown.showSignUps) {
+                                Box(Modifier.appearOnEnter(delayMillis = 80)) {
+                                    SignUpsSection(
+                                        registration = shown.registration,
+                                        timezone = shown.timezone,
+                                        saving = shown.registrationSaving,
+                                        onClose = { viewModel.askCloseSignUps(true) },
+                                        onReopen = viewModel::reopenSignUps,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(16.dp))
                         }
-                        if (state.showFeedback) {
-                            FeedbackSection(open = state.feedbackOpen, saving = state.feedbackSaving, onToggle = viewModel::onFeedbackToggle)
-                        }
-                        if (state.showSignUps) {
-                            SignUpsSection(
-                                registration = state.registration,
-                                timezone = state.timezone,
-                                saving = state.registrationSaving,
-                                onClose = { viewModel.askCloseSignUps(true) },
-                                onReopen = viewModel::reopenSignUps,
-                            )
-                        }
-                        Spacer(Modifier.height(16.dp))
                     }
                 }
             }
@@ -157,6 +185,15 @@ fun DayOfScreen(
     }
 }
 
+private enum class DayOfPhase { Loading, Error, Empty, Content }
+
+private fun DayOfUiState.phase(): DayOfPhase = when {
+    loading -> DayOfPhase.Loading
+    error != null -> DayOfPhase.Error
+    !hasAnySection -> DayOfPhase.Empty
+    else -> DayOfPhase.Content
+}
+
 @Composable
 private fun SectionTitle(title: String, body: String) {
     val c = YuyuTheme.colors
@@ -178,43 +215,68 @@ internal fun RunningLateSection(state: DayOfUiState, onSessionClick: (String) ->
             "Set a delay on the session that's running over. Every later session in the same track moves back by that " +
                 "many minutes, and delays add up down the track. Planned times and other tracks don't change.",
         )
-        when {
-            state.scheduleLoading -> Text("Loading the programme…", style = t.bodyUi, color = c.textMuted)
-            state.scheduleError != null -> ErrorState(state.scheduleError, title = "Couldn't load the programme", onRetry = onRetry)
-            state.tracks.all { it.sessions.isEmpty() } -> Text(
-                "This event has no programme sessions yet. Add them on the website.",
-                style = t.bodyUi,
-                color = c.textMuted,
-            )
-            else -> state.tracks.filter { it.sessions.isNotEmpty() }.forEach { track ->
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SectionHeader(track.name)
-                    YuyuCard(contentPadding = PaddingValues(0.dp)) {
-                        track.sessions.forEachIndexed { index, item ->
-                            val s = item.session
-                            val start = EventTimeFormatter.parseInstant(s.startDateTime)
-                            val end = EventTimeFormatter.parseInstant(s.endDateTime)
-                            val planned = start?.let { "Planned " + EventTimeFormatter.timeRange(it, end, tz) }
-                            val live = if (item.shiftMinutes > 0 && start != null) {
-                                val shift = item.shiftMinutes * 60L
-                                "Live " + EventTimeFormatter.timeRange(start.plusSeconds(shift), end?.plusSeconds(shift), tz) +
-                                    " (${item.shiftMinutes} min behind)"
-                            } else {
-                                null
-                            }
-                            ListRow(
-                                title = s.title,
-                                supporting = listOfNotNull(planned, live).joinToString("\n"),
-                                trailing = {
-                                    if (s.delayMinutes > 0) StatusChip("+${s.delayMinutes} min", StatusTone.Warning)
-                                },
-                                showChevron = true,
-                                onClick = { onSessionClick(s.id) },
-                                divider = index < track.sessions.lastIndex,
-                            )
-                        }
+        // The programme fades in once loaded; delay edits then animate in place.
+        YuyuStateTransition(state, contentKey = { it.schedulePhase() }, label = "schedule") { shown ->
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                when (shown.schedulePhase()) {
+                    SchedulePhase.Loading -> Text("Loading the programme…", style = t.bodyUi, color = c.textMuted)
+                    SchedulePhase.Error -> ErrorState(shown.scheduleError.orEmpty(), title = "Couldn't load the programme", onRetry = onRetry)
+                    SchedulePhase.Empty -> Text(
+                        "This event has no programme sessions yet. Add them on the website.",
+                        style = t.bodyUi,
+                        color = c.textMuted,
+                    )
+                    SchedulePhase.Tracks -> shown.tracks.filter { it.sessions.isNotEmpty() }.forEach { track ->
+                        TrackCard(track, tz, onSessionClick)
                     }
                 }
+            }
+        }
+    }
+}
+
+private enum class SchedulePhase { Loading, Error, Empty, Tracks }
+
+private fun DayOfUiState.schedulePhase(): SchedulePhase = when {
+    scheduleLoading -> SchedulePhase.Loading
+    scheduleError != null -> SchedulePhase.Error
+    tracks.all { it.sessions.isEmpty() } -> SchedulePhase.Empty
+    else -> SchedulePhase.Tracks
+}
+
+@Composable
+private fun TrackCard(track: TrackUi, tz: String, onSessionClick: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        SectionHeader(track.name)
+        // Live times grow or shrink smoothly when a delay changes.
+        YuyuCard(Modifier.animateContentSize(YuyuSpecs.standard()), contentPadding = PaddingValues(0.dp)) {
+            track.sessions.forEachIndexed { index, item ->
+                val s = item.session
+                val start = EventTimeFormatter.parseInstant(s.startDateTime)
+                val end = EventTimeFormatter.parseInstant(s.endDateTime)
+                val planned = start?.let { "Planned " + EventTimeFormatter.timeRange(it, end, tz) }
+                val live = if (item.shiftMinutes > 0 && start != null) {
+                    val shift = item.shiftMinutes * 60L
+                    "Live " + EventTimeFormatter.timeRange(start.plusSeconds(shift), end?.plusSeconds(shift), tz) +
+                        " (${item.shiftMinutes} min behind)"
+                } else {
+                    null
+                }
+                ListRow(
+                    title = s.title,
+                    supporting = listOfNotNull(planned, live).joinToString("\n"),
+                    trailing = {
+                        // The delay chip pops in when a delay is set and cross-fades as it changes.
+                        RevealVisibility(s.delayMinutes > 0) {
+                            val last = remember { intArrayOf(0) }
+                            if (s.delayMinutes > 0) last[0] = s.delayMinutes
+                            AnimatedStatusChip("+${last[0]} min", StatusTone.Warning)
+                        }
+                    },
+                    showChevron = true,
+                    onClick = { onSessionClick(s.id) },
+                    divider = index < track.sessions.lastIndex,
+                )
             }
         }
     }
@@ -224,7 +286,7 @@ internal fun RunningLateSection(state: DayOfUiState, onSessionClick: (String) ->
 internal fun FeedbackSection(open: Boolean, saving: Boolean, onToggle: (Boolean) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionTitle("Feedback form", "Open the form when you'd like attendees to tell you how it went.")
-        YuyuCard(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+        YuyuCard(Modifier.animateContentSize(YuyuSpecs.standard()), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
             YuyuSwitchRow(
                 title = if (open) "Feedback form is open" else "Feedback form is closed",
                 description = if (saving) "Saving…" else if (open) "Attendees can send feedback now." else "Attendees can't send feedback yet.",
@@ -248,40 +310,36 @@ internal fun SignUpsSection(
     val t = YuyuTheme.typography
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionTitle("Sign-ups", "Close sign-ups when the room is full or the event is about to start.")
-        YuyuCard {
+        YuyuCard(Modifier.animateContentSize(YuyuSpecs.standard())) {
+            val open = registration.registrationOpen
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (registration.registrationOpen) {
-                    StatusChip("Open", StatusTone.Success)
-                } else {
-                    StatusChip("Closed", StatusTone.Neutral)
-                }
-                Text(
-                    if (registration.registrationOpen) "Sign-ups are open" else "Sign-ups are closed",
-                    style = t.bodyUiMedium,
-                    color = c.text,
-                )
+                AnimatedStatusChip(if (open) "Open" else "Closed", if (open) StatusTone.Success else StatusTone.Neutral)
+                FadeText(if (open) "Sign-ups are open" else "Sign-ups are closed", style = t.bodyUiMedium, color = c.text)
             }
             val closesAt = EventTimeFormatter.parseInstant(registration.registrationClosesAt)
             val detail = when {
-                registration.registrationOpen && closesAt != null ->
+                open && closesAt != null ->
                     "Closes " + EventTimeFormatter.dayShort(closesAt, timezone) + ", " +
                         EventTimeFormatter.time(closesAt, timezone) + " " + EventTimeFormatter.zoneLabel(closesAt, timezone)
-                !registration.registrationOpen -> registration.registrationClosedReason
+                !open -> registration.registrationClosedReason
                 else -> null
             }
-            if (detail != null) {
-                Spacer(Modifier.height(6.dp))
-                Text(detail, style = t.bodyUi, color = c.textMuted)
+            RevealVisibility(detail != null) {
+                Column {
+                    Spacer(Modifier.height(6.dp))
+                    FadeText(detail.orEmpty(), style = t.bodyUi, color = c.textMuted)
+                }
             }
             Spacer(Modifier.height(12.dp))
             HorizontalDivider(color = c.border)
             Spacer(Modifier.height(12.dp))
-            if (registration.registrationOpen) {
+            RevealVisibility(open) {
                 YuyuButton("Close sign-ups now", onClose, variant = YuyuButtonVariant.Danger, loading = saving, loadingText = "Closing…")
             }
-            if (registration.registrationManuallyClosed) {
+            RevealVisibility(registration.registrationManuallyClosed) {
                 YuyuButton("Reopen sign-ups", onReopen, variant = YuyuButtonVariant.Secondary, loading = saving, loadingText = "Reopening…")
-            } else if (!registration.registrationOpen) {
+            }
+            RevealVisibility(!registration.registrationManuallyClosed && !open) {
                 Text(
                     "To open sign-ups again, change the sign-up window on the website.",
                     style = t.caption,
@@ -290,6 +348,19 @@ internal fun SignUpsSection(
             }
         }
     }
+}
+
+/** Text that cross-fades when it changes (state words, reasons). */
+@Composable
+private fun FadeText(text: String, style: TextStyle, color: Color) {
+    val reduced = LocalReducedMotion.current
+    AnimatedContent(
+        targetState = text,
+        transitionSpec = {
+            if (reduced) EnterTransition.None togetherWith ExitTransition.None else fadeIn(YuyuSpecs.quick()) togetherWith fadeOut(YuyuSpecs.quick())
+        },
+        label = "fadeText",
+    ) { shown -> Text(shown, style = style, color = color) }
 }
 
 @Composable
@@ -331,7 +402,7 @@ private fun DelaySheet(
             )
             YuyuIconButton(Icons.Outlined.Add, "5 minutes more", onClick = { onStep(5) }, enabled = !editor.saving)
         }
-        if (editor.currentMinutes > 0 || editor.input != "0") {
+        RevealVisibility(editor.currentMinutes > 0 || editor.input != "0") {
             YuyuButton("Clear delay (set to 0)", onClear, variant = YuyuButtonVariant.Quiet, enabled = !editor.saving)
         }
         DialogActions {

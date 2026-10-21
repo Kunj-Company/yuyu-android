@@ -1,5 +1,6 @@
 package com.twilighty.yuyu.feature.broadcasts.history
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -7,7 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
@@ -36,9 +37,15 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuButton
 import com.twilighty.yuyu.core.designsystem.component.YuyuButtonVariant
 import com.twilighty.yuyu.core.designsystem.component.YuyuCard
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.AnimatedCounterText
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
+import com.twilighty.yuyu.core.designsystem.motion.rememberEntranceState
+import com.twilighty.yuyu.core.designsystem.motion.staggeredEntrance
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.network.model.BroadcastHistoryDto
 import com.twilighty.yuyu.feature.broadcasts.BroadcastCopy
+import com.twilighty.yuyu.feature.broadcasts.listItemMotion
 import com.twilighty.yuyu.feature.broadcasts.editor.EmailHtml
 
 /**
@@ -66,26 +73,34 @@ fun BroadcastHistoryScreen(
         topBar = { YuyuTopBar("Sent emails", onBack = onBack) },
         containerColor = YuyuTheme.colors.bgCanvas,
     ) { padding ->
-        when {
-            state.loading && state.history.isEmpty() -> LoadingState(Modifier.padding(padding), label = "Loading sent emails")
-            state.error != null && state.history.isEmpty() -> ErrorState(state.error!!, Modifier.padding(padding), onRetry = viewModel::load)
-            state.history.isEmpty() -> EmptyState(
-                title = "Nothing sent yet",
-                body = "No emails have been sent for this event yet.",
-                modifier = Modifier.padding(padding),
-            )
-            else -> LazyColumn(
-                Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(state.history, key = { it.id }) { row ->
-                    HistoryRow(
-                        row = row,
-                        designLabel = state.designLabel(row.design),
-                        onOpen = { openRowId = row.id },
-                        onReuse = { viewModel.requestReuse(row, reuseTarget) },
-                    )
+        val entrance = rememberEntranceState()
+        YuyuStateTransition(
+            targetState = state,
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentKey = { it.phase() },
+            label = "history",
+        ) { shown ->
+            when (shown.phase()) {
+                HistoryPhase.Loading -> LoadingState(label = "Loading sent emails")
+                HistoryPhase.Error -> ErrorState(shown.error.orEmpty(), onRetry = viewModel::load)
+                HistoryPhase.Empty -> EmptyState(
+                    title = "Nothing sent yet",
+                    body = "No emails have been sent for this event yet.",
+                )
+                HistoryPhase.List -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    itemsIndexed(shown.history, key = { _, row -> row.id }) { index, row ->
+                        HistoryRow(
+                            row = row,
+                            designLabel = shown.designLabel(row.design),
+                            onOpen = { openRowId = row.id },
+                            onReuse = { viewModel.requestReuse(row, reuseTarget) },
+                            modifier = listItemMotion().staggeredEntrance(entrance, row.id, index),
+                        )
+                    }
                 }
             }
         }
@@ -127,17 +142,26 @@ fun BroadcastHistoryScreen(
     }
 }
 
+private enum class HistoryPhase { Loading, Error, Empty, List }
+
+private fun BroadcastHistoryUiState.phase(): HistoryPhase = when {
+    loading && history.isEmpty() -> HistoryPhase.Loading
+    error != null && history.isEmpty() -> HistoryPhase.Error
+    history.isEmpty() -> HistoryPhase.Empty
+    else -> HistoryPhase.List
+}
+
 private fun sentLine(row: BroadcastHistoryDto): String =
     "Sent to ${BroadcastCopy.people(row.recipientCount)} · ${BroadcastCopy.formatSentAt(row.sentAt)}"
 
 @Composable
-private fun HistoryRow(row: BroadcastHistoryDto, designLabel: String, onOpen: () -> Unit, onReuse: () -> Unit) {
+private fun HistoryRow(row: BroadcastHistoryDto, designLabel: String, onOpen: () -> Unit, onReuse: () -> Unit, modifier: Modifier = Modifier) {
     val c = YuyuTheme.colors
-    YuyuCard(onClick = onOpen, onClickLabel = "Show email") {
+    YuyuCard(modifier.animateContentSize(YuyuSpecs.standard()), onClick = onOpen, onClickLabel = "Show email") {
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(row.subject, style = YuyuTheme.typography.bodyUiMedium, color = c.text, modifier = Modifier.semantics { heading() })
-                Text(sentLine(row), style = YuyuTheme.typography.caption, color = c.textMuted)
+                AnimatedCounterText(sentLine(row), style = YuyuTheme.typography.caption, color = c.textMuted)
                 Text(
                     "$designLabel design · ${BroadcastCopy.describeAudience(row.audience.statuses, row.audience.attendance)}",
                     style = YuyuTheme.typography.caption,
