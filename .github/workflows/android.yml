@@ -1,15 +1,31 @@
 name: Android CI
 
+# Versioning and release flow: see docs/RELEASING.md.
+#
+# - Every push and pull request: unit tests, lint, debug + release APKs and the
+#   AAB, uploaded as a workflow artifact.
+# - Push to main: also refreshes the rolling "latest" pre-release.
+# - "Run workflow" with a version (or a pushed v* tag): builds, requires the
+#   release keystore, and publishes the GitHub release v<version>.
+
 on:
   push:
     branches: [main, "feat/**", "fix/**"]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, semver without the v (for example 0.2.0). Builds main HEAD and publishes v<version>."
+        required: true
+        type: string
 
 concurrency:
-  group: android-${{ github.ref }}
-  cancel-in-progress: true
+  # Manual releases get their own group so a later push never replaces them
+  # while they wait. Only branch and pull request builds are cancelled when a
+  # newer commit arrives; main, tag and release runs always finish.
+  group: android-${{ github.event_name == 'workflow_dispatch' && format('release-{0}', inputs.version) || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: read
@@ -19,12 +35,90 @@ jobs:
     name: Test, lint and build APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      # Tag builds (v1.2.3) use the tag as the version name; others use 0.1.0-<run>.
-      VERSION_NAME: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.1.0-{0}', github.run_number) }}
+    outputs:
+      mode: ${{ steps.version.outputs.mode }}
+      version: ${{ steps.version.outputs.version }}
+      version_name: ${{ steps.version.outputs.version_name }}
+      version_code: ${{ steps.version.outputs.version_code }}
+      file_version: ${{ steps.version.outputs.file_version }}
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
+      signed: ${{ steps.keystore.outputs.signed }}
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          # Full history and tags: versionCode is the commit count and the
+          # version name starts from the last v* tag.
+          fetch-depth: 0
+          # A manual release always builds main HEAD.
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || '' }}
+
+      - name: Compute version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          sha="$(git rev-parse HEAD)"
+          short="$(git rev-parse --short=7 HEAD)"
+          code="$(git rev-list --count HEAD)"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            mode=release
+            version="${INPUT_VERSION#v}"
+            if ! [[ "$version" =~ $semver ]]; then
+              echo "::error::Version '$INPUT_VERSION' is not semver (expected for example 0.2.0 or 1.0.0-rc.1)."
+              exit 1
+            fi
+            tag="v$version"
+            if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+              echo "::error::Tag $tag already exists. Pick a new version."
+              exit 1
+            fi
+            name="$version"
+          elif [[ "$REF" == refs/tags/v* ]]; then
+            mode=release
+            tag="$REF_NAME"
+            version="${tag#v}"
+            if ! [[ "$version" =~ $semver ]]; then
+              echo "::error::Tag $tag is not v<semver> (for example v0.2.0)."
+              exit 1
+            fi
+            name="$version"
+          else
+            if [ "$REF" = "refs/heads/main" ]; then mode=latest; else mode=build; fi
+            tag=""
+            last="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD 2> /dev/null || true)"
+            base="${last#v}"
+            [ -n "$base" ] || base="0.1.0"
+            version="$base"
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              channel="pr${PR_NUMBER}"
+            else
+              channel="$REF_NAME"
+            fi
+            # Branch names become a semver-safe identifier: feat/foo_bar -> feat-foo-bar.
+            channel="$(printf '%s' "$channel" | tr -c '0-9A-Za-z-' '-' | sed -E 's/-+/-/g; s/^-//; s/-$//')"
+            name="${base}-${channel}.${code}+${short}"
+          fi
+
+          {
+            echo "mode=$mode"
+            echo "version=$version"
+            echo "version_name=$name"
+            echo "version_code=$code"
+            # Artifact and release asset file names avoid '+'.
+            echo "file_version=${name//+/-}"
+            echo "tag=$tag"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building $name (versionCode $code, mode $mode) from $sha"
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -47,18 +141,29 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Prepare release keystore
-        # Optional: add the YUYU_KEYSTORE_BASE64, YUYU_KEYSTORE_PASSWORD,
-        # YUYU_KEY_ALIAS and YUYU_KEY_PASSWORD repository secrets to sign
-        # release builds. Without them, release falls back to debug signing.
+        id: keystore
+        # Secrets YUYU_KEYSTORE_BASE64, YUYU_KEYSTORE_PASSWORD, YUYU_KEY_ALIAS
+        # and YUYU_KEY_PASSWORD sign release builds. Without them, branch and
+        # main builds fall back to debug signing; versioned releases fail.
         env:
+          MODE: ${{ steps.version.outputs.mode }}
           KEYSTORE_BASE64: ${{ secrets.YUYU_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.YUYU_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.YUYU_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.YUYU_KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/yuyu-release.keystore"
+          set -euo pipefail
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/yuyu-release.keystore"
             echo "YUYU_KEYSTORE_PATH=$RUNNER_TEMP/yuyu-release.keystore" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
             echo "Release builds will be signed with the release keystore."
+          elif [ "$MODE" = "release" ]; then
+            echo "::error::Release signing secrets are missing. Set YUYU_KEYSTORE_BASE64, YUYU_KEYSTORE_PASSWORD, YUYU_KEY_ALIAS and YUYU_KEY_PASSWORD (see docs/RELEASING.md). A versioned release is never published debug-signed."
+            exit 1
           else
-            echo "::warning::No release keystore secret set; release builds use debug signing."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Release signing secrets are not all set; release builds use debug signing."
           fi
 
       - name: Unit tests and lint
@@ -69,24 +174,43 @@ jobs:
           YUYU_KEYSTORE_PASSWORD: ${{ secrets.YUYU_KEYSTORE_PASSWORD }}
           YUYU_KEY_ALIAS: ${{ secrets.YUYU_KEY_ALIAS }}
           YUYU_KEY_PASSWORD: ${{ secrets.YUYU_KEY_PASSWORD }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
         run: >
           ./gradlew assembleDebug assembleRelease bundleRelease
-          -Pyuyu.versionCode=${{ github.run_number }}
-          -Pyuyu.versionName=${{ env.VERSION_NAME }}
+          "-Pyuyu.versionCode=$VERSION_CODE"
+          "-Pyuyu.versionName=$VERSION_NAME"
           --stacktrace
 
-      - name: Rename outputs
+      - name: Check release signature
+        env:
+          SIGNED: ${{ steps.keystore.outputs.signed }}
         run: |
+          set -euo pipefail
+          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          certs="$("$apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk)"
+          grep -E 'Signer #1 certificate (DN|SHA-256 digest)' <<< "$certs" || true
+          if [ "$SIGNED" = "true" ] && grep -q 'CN=Android Debug' <<< "$certs"; then
+            echo "::error::The release APK is signed with the debug key although the release keystore was provided."
+            exit 1
+          fi
+
+      - name: Rename outputs
+        env:
+          FILE_VERSION: ${{ steps.version.outputs.file_version }}
+        run: |
+          set -euo pipefail
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/yuyu-${VERSION_NAME}-debug.apk"
-          cp app/build/outputs/apk/release/app-release.apk "dist/yuyu-${VERSION_NAME}-release.apk"
-          cp app/build/outputs/bundle/release/app-release.aab "dist/yuyu-${VERSION_NAME}-release.aab"
-          (cd dist && sha256sum * > SHA256SUMS.txt)
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/yuyu-${FILE_VERSION}-debug.apk"
+          cp app/build/outputs/apk/release/app-release.apk "dist/yuyu-${FILE_VERSION}-release.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "dist/yuyu-${FILE_VERSION}-release.aab"
+          (cd dist && sha256sum -- * > SHA256SUMS.txt)
+          cat dist/SHA256SUMS.txt
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: yuyu-${{ env.VERSION_NAME }}
+          name: yuyu-${{ steps.version.outputs.file_version }}
           path: dist/
           retention-days: 30
 
@@ -94,7 +218,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: reports-${{ github.run_number }}
+          name: reports-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
             **/build/reports/tests/
             **/build/reports/lint-results-*.html
@@ -105,22 +229,115 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/yuyu-release.keystore"
 
-  release:
-    name: Publish GitHub release
+  latest:
+    name: Update "latest" pre-release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: needs.build.outputs.mode == 'latest'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SHA: ${{ needs.build.outputs.sha }}
+      VERSION_NAME: ${{ needs.build.outputs.version_name }}
+      VERSION_CODE: ${{ needs.build.outputs.version_code }}
+      SIGNED: ${{ needs.build.outputs.signed }}
     steps:
       - name: Download build
         uses: actions/download-artifact@v4
         with:
-          name: yuyu-${{ github.ref_name }}
+          name: yuyu-${{ needs.build.outputs.file_version }}
+          path: dist
+
+      - name: Move the latest tag to this commit
+        # Tags written with GITHUB_TOKEN do not start new workflow runs.
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GH_REPO/git/ref/tags/latest" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/latest" -f sha="$SHA" -F force=true > /dev/null
+          else
+            gh api -X POST "repos/$GH_REPO/git/refs" -f ref=refs/tags/latest -f sha="$SHA" > /dev/null
+          fi
+
+      - name: Publish pre-release
+        run: |
+          set -euo pipefail
+          short="${SHA:0:7}"
+          title="Latest build (main @ $short)"
+          {
+            echo "Rolling build of \`main\` at $SHA."
+            echo
+            echo "- Version: \`$VERSION_NAME\` (versionCode $VERSION_CODE)"
+            echo "- Install \`yuyu-*-release.apk\` on a phone. \`SHA256SUMS.txt\` lists the checksums."
+            echo "- This pre-release is replaced on every push to \`main\`. Tagged \`vX.Y.Z\` releases are the stable ones."
+            echo
+            if [ "$SIGNED" = "true" ]; then
+              echo "Signed with the Yuyu release key."
+            else
+              echo "> [!WARNING]"
+              echo "> This build is **debug-signed** because the release signing secrets are not set yet."
+              echo "> A later build signed with the release key cannot be installed over it: uninstall this one first (the app's local data is lost)."
+            fi
+            echo
+            echo "Built by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > notes.md
+
+          if gh release view latest > /dev/null 2>&1; then
+            gh release edit latest --title "$title" --notes-file notes.md --prerelease --latest=false
+            gh release upload latest dist/* --clobber
+            # Drop assets from older builds (file names carry the version).
+            for asset in $(gh release view latest --json assets --jq '.assets[].name'); do
+              if [ ! -e "dist/$asset" ]; then
+                gh release delete-asset latest "$asset" --yes
+              fi
+            done
+          else
+            gh release create latest dist/* --verify-tag --title "$title" --notes-file notes.md --prerelease --latest=false
+          fi
+          gh release view latest --json url,assets --jq '.url, .assets[].name'
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    if: needs.build.outputs.mode == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SHA: ${{ needs.build.outputs.sha }}
+      TAG: ${{ needs.build.outputs.tag }}
+      VERSION: ${{ needs.build.outputs.version }}
+      SIGNED: ${{ needs.build.outputs.signed }}
+    steps:
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: yuyu-${{ needs.build.outputs.file_version }}
           path: dist
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
+        run: |
+          set -euo pipefail
+          if [ "$SIGNED" != "true" ]; then
+            echo "::error::Refusing to publish $TAG: the build is not signed with the release key."
+            exit 1
+          fi
+          args=(--title "Yuyu $VERSION" --generate-notes)
+          case "$VERSION" in *-*) args+=(--prerelease) ;; esac
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            # Created through the API with GITHUB_TOKEN, so the new tag does not
+            # start another workflow run; this run publishes the release.
+            if gh api "repos/$GH_REPO/git/ref/tags/$TAG" > /dev/null 2>&1; then
+              echo "::error::Tag $TAG already exists. Pick a new version."
+              exit 1
+            fi
+            gh release create "$TAG" dist/* --target "$SHA" "${args[@]}"
+          else
+            gh release create "$TAG" dist/* --verify-tag "${args[@]}"
+          fi
+          gh release view "$TAG" --json url,assets --jq '.url, .assets[].name'
