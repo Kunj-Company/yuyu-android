@@ -3,6 +3,13 @@ package com.twilighty.yuyu.feature.attendee.event
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +77,10 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuChipStyle
 import com.twilighty.yuyu.core.designsystem.component.YuyuIconButton
 import com.twilighty.yuyu.core.designsystem.component.YuyuProgressBar
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
+import com.twilighty.yuyu.core.designsystem.motion.appearOnEnter
 import com.twilighty.yuyu.core.designsystem.theme.MinTouchTarget
 import com.twilighty.yuyu.core.designsystem.theme.YuyuRadius
 import com.twilighty.yuyu.core.designsystem.theme.YuyuSpacing
@@ -79,9 +90,11 @@ import com.twilighty.yuyu.core.network.model.PublicEventDto
 import com.twilighty.yuyu.core.network.model.PublicEventResponseDto
 import com.twilighty.yuyu.core.network.model.PublicSessionDto
 import com.twilighty.yuyu.core.network.model.RsvpStatus
+import com.twilighty.yuyu.feature.attendee.common.AnimatedReveal
 import com.twilighty.yuyu.feature.attendee.common.addToCalendar
 import com.twilighty.yuyu.feature.attendee.common.isSafeHttpUrl
 import com.twilighty.yuyu.feature.attendee.common.shareText
+import com.twilighty.yuyu.feature.attendee.common.successPop
 import java.time.Duration
 
 @Composable
@@ -124,29 +137,59 @@ internal fun EventDetailScreen(
                     }
                 }
             },
-            bottomBar = { if (data != null) RegisterBar(data, onRegister, onOpenTicket) },
+            bottomBar = {
+                val reduced = LocalReducedMotion.current
+                AnimatedVisibility(
+                    visible = data != null,
+                    enter = if (reduced) EnterTransition.None else slideInVertically(YuyuSpecs.standard(delayMillis = 120)) { it } + fadeIn(YuyuSpecs.standard(delayMillis = 120)),
+                    exit = if (reduced) ExitTransition.None else fadeOut(YuyuSpecs.quick()),
+                    label = "registerBar",
+                ) {
+                    // Keep the last event while the bar animates out.
+                    val shown = remember { arrayOfNulls<PublicEventResponseDto>(1) }
+                    if (data != null) shown[0] = data
+                    shown[0]?.let { RegisterBar(it, onRegister, onOpenTicket) }
+                }
+            },
             containerColor = YuyuTheme.colors.bgCanvas,
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
-                when {
-                    state.loading -> LoadingState(label = "Loading event")
-                    data == null -> MessageState(
-                        mood = if (state.offline) DotFaceMood.Sleepy else DotFaceMood.Sad,
-                        title = when {
-                            state.notFound -> "This event isn't available"
-                            state.offline -> "You're offline"
-                            else -> "Couldn't load this event"
-                        },
-                        body = if (state.notFound) "It may be private, unpublished or the link may be wrong." else state.error,
-                        actionLabel = if (state.notFound) null else "Try again",
-                        onAction = if (state.notFound) null else onRetry,
-                    )
-                    else -> EventContent(data, onFeedback)
+                YuyuStateTransition(
+                    targetState = state,
+                    modifier = Modifier.fillMaxSize(),
+                    contentKey = { it.phase },
+                    label = "eventDetail",
+                ) { shown ->
+                    val shownData = shown.data
+                    when {
+                        shown.phase == DetailPhase.Loading -> LoadingState(label = "Loading event")
+                        shownData == null -> MessageState(
+                            mood = if (shown.offline) DotFaceMood.Sleepy else DotFaceMood.Sad,
+                            title = when {
+                                shown.notFound -> "This event isn't available"
+                                shown.offline -> "You're offline"
+                                else -> "Couldn't load this event"
+                            },
+                            body = if (shown.notFound) "It may be private, unpublished or the link may be wrong." else shown.error,
+                            actionLabel = if (shown.notFound) null else "Try again",
+                            onAction = if (shown.notFound) null else onRetry,
+                        )
+                        else -> EventContent(shownData, onFeedback)
+                    }
                 }
             }
         }
     }
 }
+
+private enum class DetailPhase { Loading, Message, Content }
+
+private val EventDetailUiState.phase: DetailPhase
+    get() = when {
+        loading -> DetailPhase.Loading
+        data == null -> DetailPhase.Message
+        else -> DetailPhase.Content
+    }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -166,10 +209,10 @@ private fun EventContent(data: PublicEventResponseDto, onFeedback: () -> Unit) {
                 model = event.coverImageUrl,
                 contentDescription = "Cover image for ${event.title}",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 7f).clip(YuyuRadius.extraLarge).background(a.accentSoft),
+                modifier = Modifier.fillMaxWidth().appearOnEnter().aspectRatio(16f / 7f).clip(YuyuRadius.extraLarge).background(a.accentSoft),
             )
         }
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.appearOnEnter(delayMillis = 40), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (event.isOnline) YuyuChip("Online", style = YuyuChipStyle.Accent, icon = Icons.Outlined.Videocam)
                 event.tags.forEach { YuyuChip(it) }
@@ -179,7 +222,7 @@ private fun EventContent(data: PublicEventResponseDto, onFeedback: () -> Unit) {
         }
 
         if (start != null) {
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.appearOnEnter(delayMillis = 80), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 val block = EventTimeFormatter.dateBlock(start, event.timezone)
                 DateBlock(block.month, block.day, accessibleDate = EventTimeFormatter.dayLong(start, event.timezone))
                 Column(Modifier.weight(1f)) {
@@ -191,14 +234,15 @@ private fun EventContent(data: PublicEventResponseDto, onFeedback: () -> Unit) {
                 })
             }
         }
-        VenueRow(event)
+        VenueRow(event, Modifier.appearOnEnter(delayMillis = 110))
 
         if (event.showRegistrationCount && event.confirmedCount != null) {
-            Attendance(event.confirmedCount!!, event.capacity)
+            Attendance(event.confirmedCount!!, event.capacity, Modifier.appearOnEnter(delayMillis = 130))
         }
 
-        if (data.feedbackOpen) {
-            YuyuCard(Modifier.fillMaxWidth(), onClick = onFeedback, onClickLabel = "Give feedback") {
+        // Feedback can open while the page is up (refresh on return), so it slides in.
+        AnimatedReveal(data.feedbackOpen) {
+            YuyuCard(Modifier.fillMaxWidth().appearOnEnter(delayMillis = 150), onClick = onFeedback, onClickLabel = "Give feedback") {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.RateReview, contentDescription = null, tint = a.accentText)
                     Column(Modifier.weight(1f)) {
@@ -210,18 +254,18 @@ private fun EventContent(data: PublicEventResponseDto, onFeedback: () -> Unit) {
         }
 
         if (!event.description.isNullOrBlank()) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.appearOnEnter(delayMillis = 170).animateContentSize(YuyuSpecs.standard()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SectionHeader("About")
                 Description(event.description!!)
             }
         }
 
         if (data.schedule.any { it.sessions.isNotEmpty() }) {
-            Schedule(data, event)
+            Schedule(data, event, Modifier.appearOnEnter(delayMillis = 190))
         }
 
         if (data.speakers.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.appearOnEnter(delayMillis = 200), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SectionHeader("Speakers")
                 data.speakers.forEach { speaker ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -238,14 +282,14 @@ private fun EventContent(data: PublicEventResponseDto, onFeedback: () -> Unit) {
 }
 
 @Composable
-private fun VenueRow(event: PublicEventDto) {
+private fun VenueRow(event: PublicEventDto, modifier: Modifier = Modifier) {
     val c = YuyuTheme.colors
     val context = LocalContext.current
     val location = event.location?.takeIf { it.isNotBlank() }
     val map = event.mapLinkUrl?.takeIf { isSafeHttpUrl(it) && !event.isOnline }
     if (location == null && !event.isOnline) return
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .let { if (map != null) it.clip(YuyuRadius.medium).clickable(role = Role.Button, onClickLabel = "Open map") { openMap(context, map) } else it }
             .padding(vertical = 4.dp),
@@ -270,9 +314,9 @@ private fun VenueRow(event: PublicEventDto) {
 }
 
 @Composable
-private fun Attendance(confirmed: Int, capacity: Int?) {
+private fun Attendance(confirmed: Int, capacity: Int?, modifier: Modifier = Modifier) {
     val c = YuyuTheme.colors
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val left = capacity?.let { (it - confirmed).coerceAtLeast(0) }
         Text(
             listOfNotNull("$confirmed going", left?.let { if (it == 0) "Full" else "$it spots left" }).joinToString(" · "),
@@ -306,10 +350,10 @@ private fun Description(html: String) {
 }
 
 @Composable
-private fun Schedule(data: PublicEventResponseDto, event: PublicEventDto) {
+private fun Schedule(data: PublicEventResponseDto, event: PublicEventDto, modifier: Modifier = Modifier) {
     val c = YuyuTheme.colors
     val first = data.schedule.flatMap { it.sessions }.firstNotNullOfOrNull { EventTimeFormatter.parseInstant(it.startDateTime) }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier.animateContentSize(YuyuSpecs.standard()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionHeader("Schedule")
         first?.let { Text("All times ${EventTimeFormatter.zoneLabel(it, event.timezone)}", style = YuyuTheme.typography.caption, color = c.textMuted) }
         data.schedule.filter { it.sessions.isNotEmpty() }.forEachIndexed { index, track ->
@@ -342,7 +386,7 @@ private fun SessionRow(session: PublicSessionDto, timezone: String) {
             if (session.speakers.isNotEmpty()) {
                 Text(session.speakers.joinToString(", "), style = YuyuTheme.typography.bodyUi, color = c.textSecondary)
             }
-            if (session.delayMinutes > 0) {
+            AnimatedReveal(session.delayMinutes > 0) {
                 StatusChip(delayLabel(session.delayMinutes), StatusTone.Warning)
             }
         }
@@ -368,33 +412,47 @@ private fun RegisterBar(data: PublicEventResponseDto, onRegister: () -> Unit, on
     ) {
         HorizontalDivider(color = c.border)
         Column(Modifier.padding(horizontal = YuyuSpacing.gutter, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            when (val cta = registerCta(data)) {
-                is RegisterCta.Open -> {
-                    if (cta.waitlist) Text("This event is full. Join the waitlist and we'll let you know if a place opens up.", style = YuyuTheme.typography.caption, color = c.textMuted)
-                    if (cta.approval) Text("The organisers review each request.", style = YuyuTheme.typography.caption, color = c.textMuted)
-                    YuyuButton(cta.label, onRegister, variant = YuyuButtonVariant.Accent, size = YuyuButtonSize.Large, fullWidth = true, modifier = Modifier.testTag("register-button"))
+            // Only a change to "You're in" while this page is up (back from registering) pops.
+            val startedRegistered = remember { registerCta(data) is RegisterCta.Registered }
+            YuyuStateTransition(
+                targetState = registerCta(data),
+                modifier = Modifier.fillMaxWidth().animateContentSize(YuyuSpecs.standard()),
+                label = "registerCta",
+            ) { cta -> RegisterCtaContent(cta, celebrate = cta is RegisterCta.Registered && !startedRegistered, onRegister, onOpenTicket) }
+        }
+    }
+}
+
+@Composable
+private fun RegisterCtaContent(cta: RegisterCta, celebrate: Boolean, onRegister: () -> Unit, onOpenTicket: (String) -> Unit) {
+    val c = YuyuTheme.colors
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        when (cta) {
+            is RegisterCta.Open -> {
+                if (cta.waitlist) Text("This event is full. Join the waitlist and we'll let you know if a place opens up.", style = YuyuTheme.typography.caption, color = c.textMuted)
+                if (cta.approval) Text("The organisers review each request.", style = YuyuTheme.typography.caption, color = c.textMuted)
+                YuyuButton(cta.label, onRegister, variant = YuyuButtonVariant.Accent, size = YuyuButtonSize.Large, fullWidth = true, modifier = Modifier.testTag("register-button"))
+            }
+            is RegisterCta.Closed -> {
+                YuyuButton("Registration closed", {}, enabled = false, size = YuyuButtonSize.Large, fullWidth = true, modifier = Modifier.testTag("register-button"))
+                cta.reason?.let { Text(it, style = YuyuTheme.typography.caption, color = c.textMuted) }
+            }
+            is RegisterCta.Registered -> {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatusChip("You're in", StatusTone.Success, modifier = Modifier.successPop(enabled = celebrate))
                 }
-                is RegisterCta.Closed -> {
-                    YuyuButton("Registration closed", {}, enabled = false, size = YuyuButtonSize.Large, fullWidth = true, modifier = Modifier.testTag("register-button"))
-                    cta.reason?.let { Text(it, style = YuyuTheme.typography.caption, color = c.textMuted) }
+                val token = cta.ticketToken
+                if (token != null) {
+                    YuyuButton("View ticket", { onOpenTicket(token) }, variant = YuyuButtonVariant.Accent, size = YuyuButtonSize.Large, leadingIcon = Icons.Outlined.ConfirmationNumber, fullWidth = true, modifier = Modifier.testTag("register-button"))
                 }
-                is RegisterCta.Registered -> {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StatusChip("You're in", StatusTone.Success)
-                    }
-                    val token = cta.ticketToken
-                    if (token != null) {
-                        YuyuButton("View ticket", { onOpenTicket(token) }, variant = YuyuButtonVariant.Accent, size = YuyuButtonSize.Large, leadingIcon = Icons.Outlined.ConfirmationNumber, fullWidth = true, modifier = Modifier.testTag("register-button"))
-                    }
-                }
-                is RegisterCta.Waiting -> {
-                    StatusChip(if (cta.status == RsvpStatus.WAITLISTED) "On the waitlist" else "Request sent", StatusTone.Warning)
-                    Text(
-                        if (cta.status == RsvpStatus.WAITLISTED) "We'll email you if a place opens up." else "We'll email you when the organisers respond.",
-                        style = YuyuTheme.typography.caption,
-                        color = c.textMuted,
-                    )
-                }
+            }
+            is RegisterCta.Waiting -> {
+                StatusChip(if (cta.status == RsvpStatus.WAITLISTED) "On the waitlist" else "Request sent", StatusTone.Warning)
+                Text(
+                    if (cta.status == RsvpStatus.WAITLISTED) "We'll email you if a place opens up." else "We'll email you when the organisers respond.",
+                    style = YuyuTheme.typography.caption,
+                    color = c.textMuted,
+                )
             }
         }
     }
