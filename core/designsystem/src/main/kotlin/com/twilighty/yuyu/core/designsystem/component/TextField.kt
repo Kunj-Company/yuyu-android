@@ -1,5 +1,14 @@
 package com.twilighty.yuyu.core.designsystem.component
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.KeyboardActionHandler
 import androidx.compose.foundation.text.input.TextFieldDecorator
@@ -27,7 +37,6 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -53,6 +62,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
 import com.twilighty.yuyu.core.designsystem.theme.YuyuRadius
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 
@@ -180,17 +191,34 @@ fun YuyuTextField(
                 unfocusedTrailingIconColor = c.textMuted,
             ),
         )
-        if (error != null) {
-            Row(
-                Modifier.semantics { error(error) },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = c.dangerFg, modifier = Modifier.size(16.dp))
-                Text(error, style = t.caption, color = c.dangerFg)
+        val reduced = LocalReducedMotion.current
+        // The outgoing message keeps its own text while it fades, so an error
+        // that is fixed doesn't blink to empty before collapsing.
+        AnimatedContent(
+            targetState = error,
+            transitionSpec = {
+                if (reduced) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else {
+                    (fadeIn(YuyuSpecs.quick()) + slideInVertically(YuyuSpecs.quick()) { -it / 3 }) togetherWith
+                        fadeOut(tween(90)) using SizeTransform(clip = false)
+                }
+            },
+            contentKey = { it != null },
+            label = "fieldMessage",
+        ) { message ->
+            if (message != null) {
+                Row(
+                    Modifier.semantics { error(message) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = c.dangerFg, modifier = Modifier.size(16.dp))
+                    Text(message, style = t.caption, color = c.dangerFg)
+                }
+            } else if (helper != null) {
+                Text(helper, style = t.caption, color = c.textMuted)
             }
-        } else if (helper != null) {
-            Text(helper, style = t.caption, color = c.textMuted)
         }
     }
 }

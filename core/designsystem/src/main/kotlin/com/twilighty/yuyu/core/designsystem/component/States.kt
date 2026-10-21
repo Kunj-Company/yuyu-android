@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.twilighty.yuyu.core.designsystem.brand.DotFace
 import com.twilighty.yuyu.core.designsystem.brand.DotFaceMood
 import com.twilighty.yuyu.core.designsystem.brand.DotLoader
+import com.twilighty.yuyu.core.designsystem.motion.appearOnEnter
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 
 /**
@@ -39,16 +40,16 @@ fun MessageState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        DotFace(mood = mood, size = 88.dp, interactive = true)
+        DotFace(mood = mood, size = 88.dp, interactive = true, modifier = Modifier.appearOnEnter(offset = 8.dp))
         Text(
             title,
             style = YuyuTheme.typography.h3,
             color = YuyuTheme.colors.text,
             textAlign = TextAlign.Center,
-            modifier = Modifier.semantics { heading() },
+            modifier = Modifier.semantics { heading() }.appearOnEnter(delayMillis = 60),
         )
         if (body != null) {
-            Text(body, style = YuyuTheme.typography.bodyUi, color = YuyuTheme.colors.textMuted, textAlign = TextAlign.Center)
+            Text(body, style = YuyuTheme.typography.bodyUi, color = YuyuTheme.colors.textMuted, textAlign = TextAlign.Center, modifier = Modifier.appearOnEnter(delayMillis = 100))
         }
         if (actionLabel != null && onAction != null) {
             YuyuButton(actionLabel, onAction, variant = YuyuButtonVariant.Secondary)

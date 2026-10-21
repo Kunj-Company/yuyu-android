@@ -1,5 +1,10 @@
 package com.twilighty.yuyu.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -39,6 +44,9 @@ import com.twilighty.yuyu.BuildConfig
 import com.twilighty.yuyu.core.data.repository.SessionState
 import com.twilighty.yuyu.core.designsystem.component.YuyuSnackbarHost
 import com.twilighty.yuyu.core.designsystem.gallery.DesignSystemGallery
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.feature.attendee.navigation.AttendeeGraph
 import com.twilighty.yuyu.feature.attendee.navigation.MyTicketsRoute
@@ -80,10 +88,25 @@ private enum class TopLevel(val label: String, val icon: ImageVector, val graph:
 @Composable
 fun YuyuApp(state: AppUiState, viewModel: AppViewModel) {
     val c = YuyuTheme.colors
-    when (val session = state.session) {
-        SessionState.Loading -> Box(Modifier.fillMaxSize().background(c.bgCanvas))
-        SessionState.NoServer, is SessionState.SignedOut -> SignedOutHost(hasServer = session !is SessionState.NoServer, viewModel = viewModel)
-        is SessionState.SignedIn -> SignedInApp(state, viewModel)
+    // Cross-fade between loading, signed-out and signed-in, keyed on the kind
+    // of session so token refreshes inside a session don't re-animate.
+    YuyuStateTransition(
+        targetState = state.session,
+        modifier = Modifier.fillMaxSize().background(c.bgCanvas),
+        contentKey = { session ->
+            when (session) {
+                SessionState.Loading -> "loading"
+                SessionState.NoServer, is SessionState.SignedOut -> "signedOut"
+                is SessionState.SignedIn -> "signedIn"
+            }
+        },
+        label = "session",
+    ) { session ->
+        when (session) {
+            SessionState.Loading -> Box(Modifier.fillMaxSize().background(c.bgCanvas))
+            SessionState.NoServer, is SessionState.SignedOut -> SignedOutHost(hasServer = session !is SessionState.NoServer, viewModel = viewModel)
+            is SessionState.SignedIn -> SignedInApp(state, viewModel)
+        }
     }
 }
 
@@ -91,10 +114,15 @@ fun YuyuApp(state: AppUiState, viewModel: AppViewModel) {
 private fun SignedOutHost(hasServer: Boolean, viewModel: AppViewModel) {
     // Recreated whenever the step changes; the state (not navigation) decides the screen.
     val navController = rememberNavController()
+    val transitions = YuyuNavTransitions(reduced = LocalReducedMotion.current)
     NavHost(
         navController = navController,
         startDestination = if (hasServer) SignInRoute else ServerSetupRoute,
         modifier = Modifier.fillMaxSize().background(YuyuTheme.colors.bgCanvas),
+        enterTransition = transitions.enter,
+        exitTransition = transitions.exit,
+        popEnterTransition = transitions.popEnter,
+        popExitTransition = transitions.popExit,
     ) {
         signedOutGraph(onOpenStation = { navController.navigateToOpenStation() })
         // Door stations need no account: volunteers open them from a station link.
@@ -151,22 +179,32 @@ private fun SignedInApp(state: AppUiState, viewModel: AppViewModel) {
     }
 
     val tabs = TopLevel.entries.filter { it != TopLevel.Organise || state.showOrganise }
-    val showBottomBar = destination != null && (
-        destination.hasRoute<MyTicketsRoute>() || destination.hasRoute<OrganiserHomeRoute>() || destination.hasRoute<AccountRoute>()
-        )
+    val showBottomBar = destination != null && isTopLevelDestination(destination)
+    val reduced = LocalReducedMotion.current
+    val transitions = remember(reduced) { YuyuNavTransitions(reduced, ::isTopLevelDestination) }
 
     Scaffold(
         containerColor = YuyuTheme.colors.bgCanvas,
         contentWindowInsets = WindowInsets(0),
         snackbarHost = { YuyuSnackbarHost(snackbar) },
         bottomBar = {
-            if (showBottomBar) YuyuBottomBar(tabs, destination, navController)
+            AnimatedVisibility(
+                visible = showBottomBar,
+                enter = if (reduced) fadeIn() else slideInVertically(YuyuSpecs.standard()) { it } + fadeIn(YuyuSpecs.standard()),
+                exit = if (reduced) fadeOut() else slideOutVertically(YuyuSpecs.standard(200)) { it } + fadeOut(YuyuSpecs.standard(200)),
+            ) {
+                YuyuBottomBar(tabs, destination, navController)
+            }
         },
     ) { padding ->
         NavHost(
             navController = navController,
             startDestination = AttendeeGraph,
             modifier = Modifier.fillMaxSize().padding(padding),
+            enterTransition = transitions.enter,
+            exitTransition = transitions.exit,
+            popEnterTransition = transitions.popEnter,
+            popExitTransition = transitions.popExit,
         ) {
             attendeeGraph(navController)
             organiserGraph(
@@ -191,6 +229,10 @@ private fun SignedInApp(state: AppUiState, viewModel: AppViewModel) {
         }
     }
 }
+
+/** The bottom-bar tab roots; moving between them is a tab switch, not a push. */
+private fun isTopLevelDestination(destination: NavDestination): Boolean =
+    destination.hasRoute<MyTicketsRoute>() || destination.hasRoute<OrganiserHomeRoute>() || destination.hasRoute<AccountRoute>()
 
 @Composable
 private fun YuyuBottomBar(tabs: List<TopLevel>, destination: NavDestination?, navController: NavHostController) {

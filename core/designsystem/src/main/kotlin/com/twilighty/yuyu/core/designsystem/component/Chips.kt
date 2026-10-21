@@ -1,5 +1,14 @@
 package com.twilighty.yuyu.core.designsystem.component
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +27,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,6 +35,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
 import com.twilighty.yuyu.core.designsystem.theme.YuyuRadius
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 
@@ -96,6 +108,10 @@ fun YuyuFilterChip(
     enabled: Boolean = true,
 ) {
     val c = YuyuTheme.colors
+    val reduced = LocalReducedMotion.current
+    val bg by animateColorAsState(if (selected) c.primary else c.bgCanvas, YuyuSpecs.quick(), label = "chipBg")
+    val borderColor by animateColorAsState(if (selected) c.primary else c.borderStrong, YuyuSpecs.quick(), label = "chipBorder")
+    val fg by animateColorAsState(if (selected) c.onPrimary else c.text, YuyuSpecs.quick(), label = "chipFg")
     Box(
         modifier
             .defaultMinSize(minHeight = 48.dp)
@@ -105,14 +121,20 @@ fun YuyuFilterChip(
     ) {
         Row(
             Modifier
-                .background(if (selected) c.primary else c.bgCanvas, YuyuRadius.pill)
-                .border(if (selected) 1.5.dp else 1.dp, if (selected) c.primary else c.borderStrong, YuyuRadius.pill)
+                .background(bg, YuyuRadius.pill)
+                .border(if (selected) 1.5.dp else 1.dp, borderColor, YuyuRadius.pill)
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            if (selected) Icon(Icons.Rounded.Check, null, tint = c.onPrimary, modifier = Modifier.size(16.dp))
-            Text(text, style = YuyuTheme.typography.chip, color = if (selected) c.onPrimary else c.text)
+            AnimatedVisibility(
+                visible = selected,
+                enter = if (reduced) EnterTransition.None else expandHorizontally(YuyuSpecs.settle()) + scaleIn(YuyuSpecs.pop()) + fadeIn(),
+                exit = if (reduced) ExitTransition.None else shrinkHorizontally(YuyuSpecs.quick()) + fadeOut(YuyuSpecs.quick()),
+            ) {
+                Icon(Icons.Rounded.Check, null, tint = fg, modifier = Modifier.size(16.dp))
+            }
+            Text(text, style = YuyuTheme.typography.chip, color = fg)
         }
     }
 }

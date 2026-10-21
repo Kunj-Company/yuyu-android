@@ -10,6 +10,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.twilighty.yuyu.core.designsystem.motion.AnimatedCounterText
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 
 /** Stat tile (DESIGN §4.7): label over a big Bricolage number, optional progress and hint. */
@@ -29,7 +30,7 @@ fun StatTile(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(label, style = YuyuTheme.typography.label.copy(fontSize = 14.sp), color = YuyuTheme.colors.textMuted)
-            Text(value, style = YuyuTheme.typography.h1.copy(fontSize = 32.sp, lineHeight = 34.sp), color = YuyuTheme.colors.text)
+            AnimatedCounterText(value, style = YuyuTheme.typography.h1.copy(fontSize = 32.sp, lineHeight = 34.sp), color = YuyuTheme.colors.text)
             if (progress != null) YuyuProgressBar(progress)
             if (hint != null) Text(hint, style = YuyuTheme.typography.caption, color = YuyuTheme.colors.textMuted)
         }

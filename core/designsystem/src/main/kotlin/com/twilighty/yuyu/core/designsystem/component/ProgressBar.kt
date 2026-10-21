@@ -1,11 +1,13 @@
 package com.twilighty.yuyu.core.designsystem.component
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
@@ -13,6 +15,8 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.theme.YuyuMotion
 import com.twilighty.yuyu.core.designsystem.theme.YuyuRadius
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 
@@ -25,6 +29,7 @@ fun YuyuProgressBar(
     color: Color = YuyuTheme.accent.accent,
 ) {
     val value = progress.coerceIn(0f, 1f)
+    val shown by animateFloatAsState(value, YuyuSpecs.standard(YuyuMotion.SUCCESS), label = "progress")
     Box(
         modifier
             .fillMaxWidth()
@@ -32,8 +37,8 @@ fun YuyuProgressBar(
             .background(YuyuTheme.colors.bgTrack, YuyuRadius.pill)
             .semantics { progressBarRangeInfo = ProgressBarRangeInfo(value, 0f..1f) },
     ) {
-        if (value > 0f) {
-            Box(Modifier.fillMaxWidth(value).fillMaxHeight().background(color, YuyuRadius.pill))
+        if (shown > 0f) {
+            Box(Modifier.fillMaxWidth(shown).fillMaxHeight().background(color, YuyuRadius.pill))
         }
     }
 }

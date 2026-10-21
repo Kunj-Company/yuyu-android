@@ -1,5 +1,6 @@
 package com.twilighty.yuyu.core.designsystem.component
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -35,6 +35,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.pressScale
 import com.twilighty.yuyu.core.designsystem.theme.YuyuElevation
 import com.twilighty.yuyu.core.designsystem.theme.YuyuRadius
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
@@ -101,7 +103,7 @@ fun YuyuButton(
         modifier
             .minimumInteractiveComponentSize()
             .then(if (fullWidth) Modifier.fillMaxWidth() else Modifier)
-            .scale(if (pressed && enabled && !loading) 0.98f else 1f)
+            .pressScale(interaction, enabled = enabled && !loading, pressedScale = 0.97f)
             .defaultMinSize(minHeight = size.height)
             .clip(shape)
             .background(colors.container, shape)
@@ -117,7 +119,11 @@ fun YuyuButton(
             .padding(PaddingValues(horizontal = if (quiet) 8.dp else size.horizontal, vertical = 6.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier.animateContentSize(YuyuSpecs.standard()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             if (loading) {
                 CircularProgressIndicator(Modifier.size(16.dp), color = colors.content, strokeWidth = 2.dp)
             } else if (leadingIcon != null) {
