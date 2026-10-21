@@ -110,8 +110,9 @@ class EntranceState internal constructor() {
     internal val seen = mutableSetOf<Any>()
 }
 
+/** Pass [keys] (e.g. the active filter) to replay entrances when they change. */
 @Composable
-fun rememberEntranceState(): EntranceState = remember { EntranceState() }
+fun rememberEntranceState(vararg keys: Any?): EntranceState = remember(*keys) { EntranceState() }
 
 /**
  * Staggered fade-and-rise for list items the first time they show. [index] is
@@ -137,10 +138,16 @@ fun Modifier.staggeredEntrance(state: EntranceState, key: Any, index: Int): Modi
 private const val MAX_STAGGERED = 8
 private const val STAGGER_MS = 35L
 
+/**
+ * A swap with no motion at all. `None togetherWith None` alone still animates
+ * the size with a default spring, which keeps the old content visible.
+ */
+fun instantSwap(): ContentTransform = ContentTransform(EnterTransition.None, ExitTransition.None, sizeTransform = null)
+
 /** Fade-through between whole states (loading → content → error). */
 fun <S> AnimatedContentTransitionScope<S>.fadeThrough(reduced: Boolean): ContentTransform =
     if (reduced) {
-        EnterTransition.None togetherWith ExitTransition.None
+        instantSwap()
     } else {
         (fadeIn(YuyuSpecs.standard(220, delayMillis = 60)) + slideInVertically(YuyuSpecs.standard(280)) { it / 24 }) togetherWith
             fadeOut(tween(120)) using SizeTransform(clip = false)
@@ -149,7 +156,8 @@ fun <S> AnimatedContentTransitionScope<S>.fadeThrough(reduced: Boolean): Content
 /**
  * Animated swap between screen states. [contentKey] decides what counts as a
  * new state (default: the state's class), so data refreshes inside the same
- * state don't re-animate.
+ * state don't re-animate. For enum states pass `contentKey = { it }`: every
+ * value of an enum shares one class.
  */
 @Composable
 fun <S> YuyuStateTransition(
@@ -189,17 +197,40 @@ fun AnimatedCounterText(
         transitionSpec = {
             val from = initialState.filter(Char::isDigit).toLongOrNull()
             val to = targetState.filter(Char::isDigit).toLongOrNull()
-            (when {
-                reduced -> EnterTransition.None togetherWith ExitTransition.None
-                from == null || to == null || from == to ->
-                    fadeIn(YuyuSpecs.quick()) togetherWith fadeOut(YuyuSpecs.quick())
-                else -> {
-                    val up = to > from
-                    (slideInVertically(YuyuSpecs.settle()) { if (up) it else -it } + fadeIn(YuyuSpecs.quick())) togetherWith
-                        (slideOutVertically(YuyuSpecs.settle()) { if (up) -it else it } + fadeOut(YuyuSpecs.quick()))
-                }
-            }) using SizeTransform(clip = true)
+            if (reduced) {
+                instantSwap()
+            } else {
+                (when {
+                    from == null || to == null || from == to ->
+                        fadeIn(YuyuSpecs.quick()) togetherWith fadeOut(YuyuSpecs.quick())
+                    else -> {
+                        val up = to > from
+                        (slideInVertically(YuyuSpecs.settle()) { if (up) it else -it } + fadeIn(YuyuSpecs.quick())) togetherWith
+                            (slideOutVertically(YuyuSpecs.settle()) { if (up) -it else it } + fadeOut(YuyuSpecs.quick()))
+                    }
+                }) using SizeTransform(clip = true)
+            }
         },
         label = "counter",
     ) { value -> Text(value, style = style, color = color) }
 }
+
+/**
+ * Short horizontal shake for rejected input (wrong PIN, invalid scan, failed
+ * sign-in). It plays each time [trigger] changes to a new non-null value;
+ * reduced motion skips it.
+ */
+fun Modifier.shakeOn(trigger: Any?, distance: Dp = 10.dp): Modifier = composed {
+    val reduced = LocalReducedMotion.current
+    val offset = remember { Animatable(0f) }
+    LaunchedEffect(trigger) {
+        if (trigger == null || reduced) return@LaunchedEffect
+        for (step in listOf(1f, -0.8f, 0.6f, -0.4f, 0.2f, 0f)) {
+            offset.animateTo(step, tween(SHAKE_STEP_MS))
+        }
+    }
+    val distancePx = with(LocalDensity.current) { distance.toPx() }
+    graphicsLayer { translationX = offset.value * distancePx }
+}
+
+private const val SHAKE_STEP_MS = 50
