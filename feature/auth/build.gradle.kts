@@ -14,4 +14,8 @@ dependencies {
     implementation(libs.coil.compose)
 
     testImplementation(libs.androidx.datastore.preferences)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

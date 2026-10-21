@@ -31,7 +31,10 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuButtonSize
 import com.twilighty.yuyu.core.designsystem.component.YuyuCard
 import com.twilighty.yuyu.core.designsystem.component.YuyuCardTone
 import com.twilighty.yuyu.core.designsystem.component.YuyuTextField
+import com.twilighty.yuyu.core.designsystem.motion.rememberEntranceState
+import com.twilighty.yuyu.core.designsystem.motion.staggeredEntrance
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
+import com.twilighty.yuyu.feature.auth.shakeOn
 
 @Composable
 fun ServerSetupScreen(viewModel: ServerSetupViewModel = hiltViewModel()) {
@@ -47,6 +50,7 @@ internal fun ServerSetupContent(
     onConnect: () -> Unit,
 ) {
     val c = YuyuTheme.colors
+    val entrance = rememberEntranceState()
     Surface(color = c.bgCanvas, modifier = Modifier.fillMaxSize()) {
         Column(
             Modifier
@@ -58,18 +62,19 @@ internal fun ServerSetupContent(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                DotLockup()
+                DotLockup(Modifier.staggeredEntrance(entrance, "lockup", 0))
                 Spacer(Modifier.height(16.dp))
                 Text(
                     "Connect to your Yuyu",
                     style = YuyuTheme.typography.h1,
                     color = c.text,
-                    modifier = Modifier.semantics { heading() },
+                    modifier = Modifier.staggeredEntrance(entrance, "title", 1).semantics { heading() },
                 )
                 Text(
                     "Yuyu is self-hosted, so each community runs its own server. Enter the web address you use to open it.",
                     style = YuyuTheme.typography.body,
                     color = c.textSecondary,
+                    modifier = Modifier.staggeredEntrance(entrance, "body", 2),
                 )
                 YuyuTextField(
                     value = address,
@@ -81,6 +86,8 @@ internal fun ServerSetupContent(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
                     onImeAction = onConnect,
                     enabled = !state.checking,
+                    // A server that can't be reached (or isn't Yuyu) shakes the field; the message fades in below it.
+                    modifier = Modifier.staggeredEntrance(entrance, "address", 3).shakeOn(state.error),
                 )
                 YuyuButton(
                     text = "Continue",
@@ -90,9 +97,10 @@ internal fun ServerSetupContent(
                     loading = state.checking,
                     loadingText = "Checking…",
                     enabled = address.isNotBlank(),
+                    modifier = Modifier.staggeredEntrance(entrance, "continue", 4),
                 )
                 if (state.showDebugHint) {
-                    YuyuCard(tone = YuyuCardTone.Subtle) {
+                    YuyuCard(tone = YuyuCardTone.Subtle, modifier = Modifier.staggeredEntrance(entrance, "debugHint", 5)) {
                         Text(
                             "Debug build: use http://10.0.2.2:3000 for a Yuyu running on this computer (emulator).",
                             style = YuyuTheme.typography.caption,

@@ -1,5 +1,15 @@
 package com.twilighty.yuyu.feature.auth.signin
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,10 +50,14 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuButton
 import com.twilighty.yuyu.core.designsystem.component.YuyuButtonSize
 import com.twilighty.yuyu.core.designsystem.component.YuyuButtonVariant
 import com.twilighty.yuyu.core.designsystem.component.YuyuTextField
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.designsystem.util.openInBrowser
+import com.twilighty.yuyu.feature.auth.AnimatedMessage
 import com.twilighty.yuyu.feature.auth.google.GoogleSignInResult
 import com.twilighty.yuyu.feature.auth.google.requestGoogleIdToken
+import com.twilighty.yuyu.feature.auth.shakeOn
 import kotlinx.coroutines.launch
 
 /** Web paths opened in the browser (the app doesn't create accounts or reset passwords itself). */
@@ -109,6 +123,7 @@ internal fun SignInContent(
 ) {
     val c = YuyuTheme.colors
     val t = YuyuTheme.typography
+    val reduced = LocalReducedMotion.current
     Surface(color = c.bgCanvas, modifier = Modifier.fillMaxSize()) {
         Column(
             Modifier
@@ -122,108 +137,116 @@ internal fun SignInContent(
             Column(Modifier.widthIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 DotLockup()
                 Spacer(Modifier.height(12.dp))
-                when (state.step) {
-                    SignInStep.Credentials -> {
-                        Text(
-                            "Sign in" + (state.config?.instanceName?.takeIf { it != "Yuyu" }?.let { " to $it" } ?: ""),
-                            style = t.h1,
-                            color = c.text,
-                            modifier = Modifier.semantics { heading() },
-                        )
-                        if (state.serverLabel.isNotEmpty()) {
-                            Text(state.serverLabel.substringAfter("://"), style = t.caption, color = c.textMuted)
-                        }
-                        ErrorBanner(state.error)
-                        YuyuTextField(
-                            value = email,
-                            onValueChange = onEmailChange,
-                            label = "Email",
-                            error = state.emailError,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next, autoCorrectEnabled = false),
-                        )
-                        YuyuTextField(
-                            value = password,
-                            onValueChange = onPasswordChange,
-                            label = "Password",
-                            isPassword = true,
-                            error = state.passwordError,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            onImeAction = onSubmit,
-                        )
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            YuyuButton("Forgot password?", onForgotPassword, variant = YuyuButtonVariant.Quiet, size = YuyuButtonSize.Small)
-                        }
-                        YuyuButton(
-                            "Sign in",
-                            onSubmit,
-                            size = YuyuButtonSize.Large,
-                            fullWidth = true,
-                            loading = state.submitting,
-                            loadingText = "Signing in…",
-                            enabled = canSubmit,
-                        )
-                        if (state.googleEnabled) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                HorizontalDivider(Modifier.weight(1f), color = c.border)
-                                Text("or", style = t.caption, color = c.textMuted)
-                                HorizontalDivider(Modifier.weight(1f), color = c.border)
+                AnimatedContent(
+                    targetState = state.step,
+                    transitionSpec = { stepTransition(forward = targetState.ordinal > initialState.ordinal, reduced = reduced) },
+                    label = "signInStep",
+                ) { step ->
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        when (step) {
+                            SignInStep.Credentials -> {
+                                Text(
+                                    "Sign in" + (state.config?.instanceName?.takeIf { it != "Yuyu" }?.let { " to $it" } ?: ""),
+                                    style = t.h1,
+                                    color = c.text,
+                                    modifier = Modifier.semantics { heading() },
+                                )
+                                if (state.serverLabel.isNotEmpty()) {
+                                    Text(state.serverLabel.substringAfter("://"), style = t.caption, color = c.textMuted)
+                                }
+                                ErrorBanner(state.error)
+                                YuyuTextField(
+                                    value = email,
+                                    onValueChange = onEmailChange,
+                                    label = "Email",
+                                    error = state.emailError,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next, autoCorrectEnabled = false),
+                                )
+                                YuyuTextField(
+                                    value = password,
+                                    onValueChange = onPasswordChange,
+                                    label = "Password",
+                                    isPassword = true,
+                                    error = state.passwordError,
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                    onImeAction = onSubmit,
+                                )
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    YuyuButton("Forgot password?", onForgotPassword, variant = YuyuButtonVariant.Quiet, size = YuyuButtonSize.Small)
+                                }
+                                YuyuButton(
+                                    "Sign in",
+                                    onSubmit,
+                                    size = YuyuButtonSize.Large,
+                                    fullWidth = true,
+                                    loading = state.submitting,
+                                    loadingText = "Signing in…",
+                                    enabled = canSubmit,
+                                )
+                                if (state.googleEnabled) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        HorizontalDivider(Modifier.weight(1f), color = c.border)
+                                        Text("or", style = t.caption, color = c.textMuted)
+                                        HorizontalDivider(Modifier.weight(1f), color = c.border)
+                                    }
+                                    YuyuButton(
+                                        "Continue with Google",
+                                        onGoogle,
+                                        variant = YuyuButtonVariant.Secondary,
+                                        size = YuyuButtonSize.Large,
+                                        fullWidth = true,
+                                        loading = state.googleSubmitting,
+                                        loadingText = "Signing in…",
+                                    )
+                                }
+                                if (state.config?.signupEnabled != false) {
+                                    YuyuButton("New here? Create an account on the website", onCreateAccount, variant = YuyuButtonVariant.Quiet, fullWidth = true)
+                                }
+                                YuyuButton("Use a different server", onChangeServer, variant = YuyuButtonVariant.Quiet, fullWidth = true)
+                                // Door volunteers often have no account; the station only needs the organiser's PIN.
+                                YuyuButton("Volunteering at the door? Open a check-in station", onOpenStation, variant = YuyuButtonVariant.Quiet, fullWidth = true)
                             }
-                            YuyuButton(
-                                "Continue with Google",
-                                onGoogle,
-                                variant = YuyuButtonVariant.Secondary,
-                                size = YuyuButtonSize.Large,
-                                fullWidth = true,
-                                loading = state.googleSubmitting,
-                                loadingText = "Signing in…",
-                            )
+                            SignInStep.Mfa -> {
+                                Text("Two-step check", style = t.h1, color = c.text, modifier = Modifier.semantics { heading() })
+                                Text(
+                                    if (state.useRecoveryCode) {
+                                        "Enter one of the recovery codes you saved when you turned on two-step sign-in."
+                                    } else {
+                                        "Enter the 6-digit code from your authenticator app."
+                                    },
+                                    style = t.body,
+                                    color = c.textSecondary,
+                                )
+                                ErrorBanner(state.error)
+                                YuyuTextField(
+                                    value = code,
+                                    onValueChange = onCodeChange,
+                                    label = if (state.useRecoveryCode) "Recovery code" else "Authentication code",
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = if (state.useRecoveryCode) KeyboardType.Ascii else KeyboardType.NumberPassword,
+                                        imeAction = ImeAction.Done,
+                                        autoCorrectEnabled = false,
+                                    ),
+                                    onImeAction = onSubmit,
+                                )
+                                YuyuButton(
+                                    "Verify and sign in",
+                                    onSubmit,
+                                    size = YuyuButtonSize.Large,
+                                    fullWidth = true,
+                                    loading = state.submitting,
+                                    loadingText = "Checking…",
+                                    enabled = canSubmit,
+                                )
+                                YuyuButton(
+                                    if (state.useRecoveryCode) "Use an authenticator code instead" else "Use a recovery code instead",
+                                    onToggleRecovery,
+                                    variant = YuyuButtonVariant.Quiet,
+                                    fullWidth = true,
+                                )
+                                YuyuButton("Back", onBack, variant = YuyuButtonVariant.Quiet, fullWidth = true)
+                            }
                         }
-                        if (state.config?.signupEnabled != false) {
-                            YuyuButton("New here? Create an account on the website", onCreateAccount, variant = YuyuButtonVariant.Quiet, fullWidth = true)
-                        }
-                        YuyuButton("Use a different server", onChangeServer, variant = YuyuButtonVariant.Quiet, fullWidth = true)
-                        // Door volunteers often have no account; the station only needs the organiser's PIN.
-                        YuyuButton("Volunteering at the door? Open a check-in station", onOpenStation, variant = YuyuButtonVariant.Quiet, fullWidth = true)
-                    }
-                    SignInStep.Mfa -> {
-                        Text("Two-step check", style = t.h1, color = c.text, modifier = Modifier.semantics { heading() })
-                        Text(
-                            if (state.useRecoveryCode) {
-                                "Enter one of the recovery codes you saved when you turned on two-step sign-in."
-                            } else {
-                                "Enter the 6-digit code from your authenticator app."
-                            },
-                            style = t.body,
-                            color = c.textSecondary,
-                        )
-                        ErrorBanner(state.error)
-                        YuyuTextField(
-                            value = code,
-                            onValueChange = onCodeChange,
-                            label = if (state.useRecoveryCode) "Recovery code" else "Authentication code",
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = if (state.useRecoveryCode) KeyboardType.Ascii else KeyboardType.NumberPassword,
-                                imeAction = ImeAction.Done,
-                                autoCorrectEnabled = false,
-                            ),
-                            onImeAction = onSubmit,
-                        )
-                        YuyuButton(
-                            "Verify and sign in",
-                            onSubmit,
-                            size = YuyuButtonSize.Large,
-                            fullWidth = true,
-                            loading = state.submitting,
-                            loadingText = "Checking…",
-                            enabled = canSubmit,
-                        )
-                        YuyuButton(
-                            if (state.useRecoveryCode) "Use an authenticator code instead" else "Use a recovery code instead",
-                            onToggleRecovery,
-                            variant = YuyuButtonVariant.Quiet,
-                            fullWidth = true,
-                        )
-                        YuyuButton("Back", onBack, variant = YuyuButtonVariant.Quiet, fullWidth = true)
                     }
                 }
             }
@@ -231,19 +254,33 @@ internal fun SignInContent(
     }
 }
 
+/**
+ * Email/password → two-step code slides forward, Back slides back (shared
+ * axis); a short cross-fade under reduced motion.
+ */
+private fun AnimatedContentTransitionScope<SignInStep>.stepTransition(forward: Boolean, reduced: Boolean): ContentTransform {
+    if (reduced) return ContentTransform(fadeIn(tween(120)), fadeOut(tween(120)), sizeTransform = null)
+    val direction = if (forward) 1 else -1
+    val enter = slideInHorizontally(YuyuSpecs.standard(300)) { direction * it / 4 } + fadeIn(YuyuSpecs.standard(220, delayMillis = 60))
+    val exit = slideOutHorizontally(YuyuSpecs.standard(300)) { -direction * it / 4 } + fadeOut(tween(120))
+    return enter togetherWith exit using SizeTransform(clip = false)
+}
+
 @Composable
 private fun ErrorBanner(message: String?) {
-    if (message == null) return
     val c = YuyuTheme.colors
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .semantics { liveRegion = LiveRegionMode.Polite }
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = c.dangerFg)
-        Text(message, style = YuyuTheme.typography.bodyUi, color = c.dangerFg)
+    AnimatedMessage(message) { shown ->
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .shakeOn(message)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = c.dangerFg)
+            Text(shown, style = YuyuTheme.typography.bodyUi, color = c.dangerFg)
+        }
     }
 }
