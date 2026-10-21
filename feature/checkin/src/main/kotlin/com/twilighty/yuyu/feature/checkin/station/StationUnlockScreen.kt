@@ -1,5 +1,18 @@
 package com.twilighty.yuyu.feature.checkin.station
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,9 +36,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -39,8 +58,11 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuButton
 import com.twilighty.yuyu.core.designsystem.component.YuyuButtonSize
 import com.twilighty.yuyu.core.designsystem.component.YuyuButtonVariant
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
 import com.twilighty.yuyu.core.designsystem.theme.YuyuRadius
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
+import com.twilighty.yuyu.feature.checkin.ui.shakeOn
 
 @Composable
 internal fun StationUnlockScreen(
@@ -78,6 +100,18 @@ internal fun StationUnlockContent(
     onChangeStation: () -> Unit,
 ) {
     val c = YuyuTheme.colors
+    val reduced = LocalReducedMotion.current
+    val haptics = LocalHapticFeedback.current
+    LaunchedEffect(state.error) {
+        if (state.error != null) haptics.performHapticFeedback(HapticFeedbackType.Reject)
+    }
+    // Keep the last message while it fades out once the volunteer starts typing again.
+    var lastError by remember { mutableStateOf(state.error) }
+    if (state.error != null) lastError = state.error
+    val tapDigit: (Char) -> Unit = { d ->
+        haptics.performHapticFeedback(HapticFeedbackType.VirtualKey)
+        onDigit(d)
+    }
     Scaffold(
         topBar = { YuyuTopBar("Door station", onBack = onBack) },
         containerColor = c.bgCanvas,
@@ -98,17 +132,22 @@ internal fun StationUnlockContent(
                 color = c.textSecondary,
                 textAlign = TextAlign.Center,
             )
-            PinDots(state.pinLength)
-            state.error?.let {
+            // A wrong PIN shakes the dots, the way a lock says no.
+            PinDots(state.pinLength, busy = state.busy, modifier = Modifier.shakeOn(state.error))
+            AnimatedVisibility(
+                visible = state.error != null,
+                enter = if (reduced) EnterTransition.None else fadeIn(YuyuSpecs.quick()) + expandVertically(YuyuSpecs.standard()),
+                exit = if (reduced) ExitTransition.None else fadeOut(YuyuSpecs.quick()) + shrinkVertically(YuyuSpecs.standard()),
+            ) {
                 Text(
-                    it,
+                    lastError.orEmpty(),
                     style = YuyuTheme.typography.bodyUiMedium,
                     color = c.dangerFg,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
             }
-            PinPad(enabled = !state.busy, onDigit = onDigit, onBackspace = onBackspace, onClear = onClear)
+            PinPad(enabled = !state.busy, onDigit = tapDigit, onBackspace = onBackspace, onClear = onClear)
             YuyuButton(
                 "Open check-in",
                 onSubmit,
@@ -125,25 +164,65 @@ internal fun StationUnlockContent(
 }
 
 @Composable
-private fun PinDots(length: Int) {
-    val c = YuyuTheme.colors
+private fun PinDots(length: Int, busy: Boolean, modifier: Modifier = Modifier) {
+    val reduced = LocalReducedMotion.current
     Row(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.semantics(mergeDescendants = true) {
+        modifier = modifier.semantics(mergeDescendants = true) {
             contentDescription = "$length of ${StationUnlockUiState.PIN_LENGTH} digits entered"
         },
     ) {
-        repeat(StationUnlockUiState.PIN_LENGTH) { i ->
-            Box(
-                Modifier
-                    .size(16.dp)
-                    .clip(YuyuRadius.pill)
-                    .background(if (i < length) c.text else c.bgCanvas)
-                    .border(1.5.dp, c.borderStrong, YuyuRadius.pill),
-            )
+        if (busy && !reduced) {
+            // Opening the station: the dots ripple while the PIN is checked.
+            val wave = rememberInfiniteTransition(label = "pinWave")
+            repeat(StationUnlockUiState.PIN_LENGTH) { i ->
+                val lift by wave.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 0f,
+                    animationSpec = infiniteRepeatable(
+                        keyframes {
+                            durationMillis = PIN_WAVE_MS
+                            0f at i * 60
+                            1f at i * 60 + 160
+                            0f at i * 60 + 320
+                        },
+                    ),
+                    label = "pinWaveDot",
+                )
+                PinDot(filled = lift > 0.5f, scale = 1f + 0.25f * lift)
+            }
+        } else {
+            repeat(StationUnlockUiState.PIN_LENGTH) { i ->
+                val filled = i < length
+                val scale by animateFloatAsState(
+                    targetValue = if (filled) 1f else 0.85f,
+                    animationSpec = if (filled && !reduced) YuyuSpecs.pop() else YuyuSpecs.quick(),
+                    label = "pinDot",
+                )
+                PinDot(filled = filled, scale = if (reduced) 1f else scale)
+            }
         }
     }
 }
+
+@Composable
+private fun PinDot(filled: Boolean, scale: Float) {
+    val c = YuyuTheme.colors
+    val fill by animateColorAsState(if (filled) c.text else c.bgCanvas, YuyuSpecs.quick(), label = "pinDotFill")
+    Box(
+        Modifier
+            .size(16.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(YuyuRadius.pill)
+            .background(fill)
+            .border(1.5.dp, c.borderStrong, YuyuRadius.pill),
+    )
+}
+
+private const val PIN_WAVE_MS = 60 * StationUnlockUiState.PIN_LENGTH + 520
 
 @Composable
 private fun PinPad(enabled: Boolean, onDigit: (Char) -> Unit, onBackspace: () -> Unit, onClear: () -> Unit) {

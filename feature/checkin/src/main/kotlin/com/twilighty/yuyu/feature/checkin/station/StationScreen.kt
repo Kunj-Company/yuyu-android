@@ -40,6 +40,7 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuButtonVariant
 import com.twilighty.yuyu.core.designsystem.component.YuyuSwitchRow
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.feature.checkin.flow.SheetState
+import com.twilighty.yuyu.feature.checkin.ui.CheckInStateTransition
 import com.twilighty.yuyu.feature.checkin.ui.CounterTile
 import com.twilighty.yuyu.feature.checkin.ui.FindGuestPanel
 import com.twilighty.yuyu.feature.checkin.ui.ImmersiveMode
@@ -85,40 +86,52 @@ internal fun StationScreen(
         onExit()
     }
 
-    Box(Modifier.fillMaxSize().safeDrawingPadding()) {
-        when {
-            state.accessLost -> MessageState(
-                mood = DotFaceMood.Sleepy,
-                title = "Station access has expired",
-                body = "Enter the station PIN again to keep checking guests in.",
-                actionLabel = "Unlock again",
-                onAction = {
-                    ScreenPinning.unpin(context)
-                    onUnlockAgain()
-                },
-                secondaryLabel = "Exit station",
-                onSecondary = exit,
-                modifier = Modifier.align(Alignment.Center),
-            )
-            state.loading -> LoadingState(label = "Opening the station")
-            state.eventTitle == null -> ErrorState(
-                state.loadError ?: "This station couldn't be opened.",
-                onRetry = viewModel::refresh,
-            )
-            else -> StationDesk(
-                state = state,
-                viewModel = viewModel,
-                pinned = pinned,
-                onPinChange = { on ->
-                    if (on) {
-                        showPinHelp = true
-                    } else {
+    val phase = when {
+        state.accessLost -> StationPhase.AccessLost
+        state.loading -> StationPhase.Loading
+        state.eventTitle == null -> StationPhase.Failed
+        else -> StationPhase.Desk
+    }
+    CheckInStateTransition(
+        phase,
+        Modifier.fillMaxSize().safeDrawingPadding(),
+        label = "stationPhase",
+    ) { shown ->
+        Box(Modifier.fillMaxSize()) {
+            when (shown) {
+                StationPhase.AccessLost -> MessageState(
+                    mood = DotFaceMood.Sleepy,
+                    title = "Station access has expired",
+                    body = "Enter the station PIN again to keep checking guests in.",
+                    actionLabel = "Unlock again",
+                    onAction = {
                         ScreenPinning.unpin(context)
-                        pinned = false
-                    }
-                },
-                onExit = { confirmExit = true },
-            )
+                        onUnlockAgain()
+                    },
+                    secondaryLabel = "Exit station",
+                    onSecondary = exit,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+                StationPhase.Loading -> LoadingState(label = "Opening the station")
+                StationPhase.Failed -> ErrorState(
+                    state.loadError ?: "This station couldn't be opened.",
+                    onRetry = viewModel::refresh,
+                )
+                StationPhase.Desk -> StationDesk(
+                    state = state,
+                    viewModel = viewModel,
+                    pinned = pinned,
+                    onPinChange = { on ->
+                        if (on) {
+                            showPinHelp = true
+                        } else {
+                            ScreenPinning.unpin(context)
+                            pinned = false
+                        }
+                    },
+                    onExit = { confirmExit = true },
+                )
+            }
         }
     }
 
@@ -156,6 +169,8 @@ internal fun StationScreen(
         )
     }
 }
+
+private enum class StationPhase { AccessLost, Loading, Failed, Desk }
 
 @Composable
 private fun StationDesk(
