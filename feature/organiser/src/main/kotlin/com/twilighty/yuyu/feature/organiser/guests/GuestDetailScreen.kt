@@ -21,6 +21,7 @@ import com.twilighty.yuyu.core.designsystem.component.ErrorState
 import com.twilighty.yuyu.core.designsystem.component.LoadingState
 import com.twilighty.yuyu.core.designsystem.component.YuyuSnackbarHost
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.network.model.GuestDto
 import kotlinx.coroutines.flow.filterNotNull
@@ -92,30 +93,46 @@ fun GuestDetailPane(
     }
 
     val guest = state.guest
-    Column(modifier.fillMaxSize()) {
-        when {
-            state.loading && guest == null -> LoadingState(label = "Loading guest")
-            guest == null -> ErrorState(state.error ?: "We couldn't load this guest.", onRetry = viewModel::retry)
-            else -> GuestDetailContent(
-                guest = guest,
-                timezone = state.timezone,
-                actions = state.actions,
-                showCheckIn = state.showCheckIn,
-                busy = state.busy,
-                onCheckIn = viewModel::checkIn,
-                onApprove = viewModel::approve,
-                onDecline = viewModel::decline,
-                onPromote = viewModel::promote,
-                onRemove = { viewModel.askRemove(true) },
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
-                    .widthIn(max = 720.dp),
-            )
+    YuyuStateTransition(
+        targetState = state,
+        modifier = modifier.fillMaxSize(),
+        contentKey = { it.phase() },
+        label = "guestDetail",
+    ) { shown ->
+        val shownGuest = shown.guest
+        Column(Modifier.fillMaxSize()) {
+            when {
+                shown.loading && shownGuest == null -> LoadingState(label = "Loading guest")
+                shownGuest == null -> ErrorState(shown.error ?: "We couldn't load this guest.", onRetry = viewModel::retry)
+                else -> GuestDetailContent(
+                    guest = shownGuest,
+                    timezone = shown.timezone,
+                    actions = shown.actions,
+                    showCheckIn = shown.showCheckIn,
+                    busy = shown.busy,
+                    onCheckIn = viewModel::checkIn,
+                    onApprove = viewModel::approve,
+                    onDecline = viewModel::decline,
+                    onPromote = viewModel::promote,
+                    onRemove = { viewModel.askRemove(true) },
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp)
+                        .widthIn(max = 720.dp),
+                )
+            }
         }
     }
 
     if (state.confirmRemove && guest != null) {
         RemoveGuestDialog(guest.displayName, onConfirm = viewModel::confirmRemove, onDismiss = { viewModel.askRemove(false) })
     }
+}
+
+private enum class DetailPhase { Loading, Error, Content }
+
+private fun GuestDetailUiState.phase(): DetailPhase = when {
+    loading && guest == null -> DetailPhase.Loading
+    guest == null -> DetailPhase.Error
+    else -> DetailPhase.Content
 }
