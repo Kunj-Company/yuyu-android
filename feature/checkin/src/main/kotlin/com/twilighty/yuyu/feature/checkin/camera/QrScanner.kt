@@ -15,6 +15,14 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -43,12 +51,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -65,6 +75,8 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuButtonVariant
 import com.twilighty.yuyu.core.designsystem.component.YuyuCard
 import com.twilighty.yuyu.core.designsystem.component.YuyuCardTone
 import com.twilighty.yuyu.core.designsystem.component.YuyuIconButton
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
 import com.twilighty.yuyu.core.designsystem.theme.YuyuRadius
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import java.util.concurrent.Executor
@@ -204,13 +216,14 @@ private fun CameraPreview(paused: Boolean, onCode: (String) -> Unit, hint: Strin
             modifier = Modifier.fillMaxSize(),
         )
         ScanFrameOverlay(dimmed = paused, modifier = Modifier.fillMaxSize())
-        Text(
-            if (paused) "Paused while a result is showing" else hint,
-            style = YuyuTheme.typography.caption,
-            color = Color.White,
-            textAlign = TextAlign.Center,
+        Crossfade(
+            targetState = if (paused) "Paused while a result is showing" else hint,
+            animationSpec = YuyuSpecs.quick(),
+            label = "scanHint",
             modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp, vertical = 12.dp),
-        )
+        ) { text ->
+            Text(text, style = YuyuTheme.typography.caption, color = Color.White, textAlign = TextAlign.Center)
+        }
         if (hasTorch) {
             YuyuIconButton(
                 icon = if (torchOn) Icons.Outlined.FlashlightOff else Icons.Outlined.FlashlightOn,
@@ -227,25 +240,65 @@ private fun CameraPreview(paused: Boolean, onCode: (String) -> Unit, hint: Strin
 @Composable
 private fun ScanFrameOverlay(dimmed: Boolean, modifier: Modifier) {
     val bracket = YuyuTheme.colors.brandMarigold
-    Canvas(modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
-        val side = size.minDimension * 0.66f
-        val topLeft = Offset((size.width - side) / 2f, (size.height - side) / 2f)
-        val radius = 20.dp.toPx()
-        drawRect(Color.Black.copy(alpha = if (dimmed) 0.7f else 0.45f))
-        drawRoundRect(Color.Transparent, topLeft, Size(side, side), CornerRadius(radius), blendMode = BlendMode.Clear)
-        val len = side * 0.18f
-        val stroke = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
-        val l = topLeft.x
-        val t = topLeft.y
-        val r = topLeft.x + side
-        val b = topLeft.y + side
-        listOf(
-            Offset(l, t + len) to Offset(l, t), Offset(l, t) to Offset(l + len, t),
-            Offset(r - len, t) to Offset(r, t), Offset(r, t) to Offset(r, t + len),
-            Offset(l, b - len) to Offset(l, b), Offset(l, b) to Offset(l + len, b),
-            Offset(r - len, b) to Offset(r, b), Offset(r, b) to Offset(r, b - len),
-        ).forEach { (from, to) -> drawLine(bracket, from, to, strokeWidth = stroke.width, cap = stroke.cap) }
+    val reduced = LocalReducedMotion.current
+    val surround by animateFloatAsState(if (dimmed) 0.7f else 0.45f, YuyuSpecs.standard(), label = "scanDim")
+    // Brackets draw in a touch when a result pauses the camera, and back out when it's live again.
+    val inset by animateFloatAsState(if (dimmed && !reduced) 0.04f else 0f, YuyuSpecs.settle(), label = "scanInset")
+    Box(modifier) {
+        Canvas(Modifier.fillMaxSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
+            val frame = scanFrame()
+            drawRect(Color.Black.copy(alpha = surround))
+            drawRoundRect(Color.Transparent, frame.topLeft, frame.size, CornerRadius(20.dp.toPx()), blendMode = BlendMode.Clear)
+            val side = frame.size.width
+            val shift = side * inset
+            val len = side * 0.18f
+            val width = 4.dp.toPx()
+            val l = frame.left + shift
+            val t = frame.top + shift
+            val r = frame.right - shift
+            val b = frame.bottom - shift
+            listOf(
+                Offset(l, t + len) to Offset(l, t), Offset(l, t) to Offset(l + len, t),
+                Offset(r - len, t) to Offset(r, t), Offset(r, t) to Offset(r, t + len),
+                Offset(l, b - len) to Offset(l, b), Offset(l, b) to Offset(l + len, b),
+                Offset(r - len, b) to Offset(r, b), Offset(r, b) to Offset(r, b - len),
+            ).forEach { (from, to) -> drawLine(bracket, from, to, strokeWidth = width, cap = StrokeCap.Round) }
+        }
+        // The one live indicator: a faint line sweeping the frame while the camera is reading.
+        if (!dimmed && !reduced) ScanSweep(bracket, Modifier.fillMaxSize())
     }
+}
+
+@Composable
+private fun ScanSweep(color: Color, modifier: Modifier) {
+    val sweep = rememberInfiniteTransition(label = "scanSweep")
+    val progress by sweep.animateFloat(
+        initialValue = 0.08f,
+        targetValue = 0.92f,
+        animationSpec = infiniteRepeatable(tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "scanSweepProgress",
+    )
+    Canvas(modifier) {
+        val frame = scanFrame()
+        val y = frame.top + frame.size.height * progress
+        val inset = frame.size.width * 0.06f
+        drawLine(
+            Brush.horizontalGradient(
+                listOf(Color.Transparent, color.copy(alpha = 0.75f), Color.Transparent),
+                startX = frame.left + inset,
+                endX = frame.right - inset,
+            ),
+            Offset(frame.left + inset, y),
+            Offset(frame.right - inset, y),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
+    }
+}
+
+private fun DrawScope.scanFrame(): Rect {
+    val side = size.minDimension * 0.66f
+    return Rect(Offset((size.width - side) / 2f, (size.height - side) / 2f), Size(side, side))
 }
 
 private fun Context.hasCameraPermission(): Boolean =
