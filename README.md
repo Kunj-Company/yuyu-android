@@ -34,9 +34,8 @@ Release signing reads `YUYU_KEYSTORE_PATH`, `YUYU_KEYSTORE_PASSWORD`,
 ship such a build.
 
 App Links are verified for one web host, `yuyu.idliapps.com` by default. Build
-for another host with `-Pyuyu.appLinkHost=events.example.org` and set
-`ANDROID_APP_SHA256_CERT_FINGERPRINTS` on that server so
-`/.well-known/assetlinks.json` lists your signing key.
+for another host with `-Pyuyu.appLinkHost=events.example.org` (see
+[Setting up a Yuyu server for the app](#setting-up-a-yuyu-server-for-the-app)).
 
 ## Connecting to a local Yuyu
 
@@ -55,8 +54,44 @@ HTTPS-only. On a physical device, use `adb reverse tcp:3000 tcp:3000` and
 `http://localhost:3000`.
 
 Google sign-in appears only when the server's `GET /auth/config` reports it as
-enabled with a web client id; the server must also accept this app's Android
-client id (`GOOGLE_ANDROID_CLIENT_IDS`).
+enabled with a web client id (see below).
+
+## Setting up a Yuyu server for the app
+
+There is nothing to configure in the app itself: each person types their
+server's address (for example `events.example.org` or
+`https://events.example.org`) on the "Connect to your Yuyu" screen and signs in.
+The operator of the Yuyu server sets up the following.
+
+- **HTTPS with a publicly trusted certificate.** Release builds accept only
+  HTTPS and trust only the system CAs
+  (`app/src/main/res/xml/network_security_config.xml`), so a self-signed or
+  private-CA certificate fails with a network error.
+- **`NEXT_PUBLIC_BASE_URL`** set to the same `https://` origin people type in
+  the app. The server builds image, event, short-link and certificate URLs
+  from it.
+- **Google sign-in (optional).** It is offered in the app only when Google
+  sign-in is configured on the server, in either place:
+  - `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` in the server environment, or
+  - the client ID and secret saved in **Super admin → Settings** (these win
+    over the environment).
+
+  The app asks Google for an ID token for that web client, so the same Google
+  Cloud project also needs an **Android** OAuth client for package
+  `com.twilighty.yuyu` with the SHA-1 fingerprint of the certificate that
+  signed the installed APK. Optionally, set `GOOGLE_MOBILE_CLIENT_IDS` (a
+  comma-separated list, environment only, with no Settings field) to that
+  Android client ID: the server then accepts only tokens issued to the listed
+  clients. If you set it, it must include the Android client ID, or every
+  Google sign-in from the app fails.
+- **App Links (optional).** So that links to the server open in the app, set
+  `ANDROID_APP_SHA256_CERT_FINGERPRINTS` on the server to the SHA-256
+  fingerprint of the app's signing certificate (`AA:BB:…` form,
+  comma-separated for several; with Play App Signing, use Play's signing key).
+  The server then lists it in `/.well-known/assetlinks.json`. The app must
+  also be built for that host with `-Pyuyu.appLinkHost=events.example.org`;
+  the default build claims only `yuyu.idliapps.com`. Without either, links
+  open in the browser, and the app still works through the address typed in.
 
 ## Continuous integration
 
