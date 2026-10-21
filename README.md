@@ -93,29 +93,23 @@ The operator of the Yuyu server sets up the following.
   the default build claims only `yuyu.idliapps.com`. Without either, links
   open in the browser, and the app still works through the address typed in.
 
-## Continuous integration
+## Continuous integration and releases
 
 `.github/workflows/android.yml` runs on every push to `main`, `feat/**` and
 `fix/**`, on pull requests, and on `v*` tags. It runs the unit tests and lint,
-then builds the debug APK, the release APK and the release bundle (AAB). Each
-run uploads them as a `yuyu-<version>` artifact with a `SHA256SUMS.txt`, plus
-the test and lint reports. Pushing a tag such as `v0.2.0` also publishes a
-GitHub release with the APKs attached.
+then builds the debug APK, the release APK and the release bundle (AAB), and
+uploads them as a `yuyu-<version>` artifact with a `SHA256SUMS.txt`, plus the
+test and lint reports.
 
-Builds get `versionCode` from the run number. The version name is the tag on
-tag builds and `0.1.0-<run>` otherwise. Locally you can pass the same values:
-`./gradlew assembleRelease -Pyuyu.versionCode=7 -Pyuyu.versionName=0.2.0`.
+- **Newest build:** every push to `main` refreshes the `latest` pre-release on
+  the [Releases page](https://github.com/twilighty-abhi/yuyu-android/releases).
+- **Cut a release:** Actions → Android CI → Run workflow with a version, or
+  `gh workflow run android.yml -f version=0.2.0`. It publishes `v0.2.0`.
+- `versionCode` is the commit count, so published builds always increase.
 
-Release signing is optional. Add these repository secrets to sign release
-builds with your own key; without them, release builds use the debug key and
-are only suitable for testing:
-
-| Secret | Value |
-| --- | --- |
-| `YUYU_KEYSTORE_BASE64` | `base64 -i release.keystore` output |
-| `YUYU_KEYSTORE_PASSWORD` | Keystore password |
-| `YUYU_KEY_ALIAS` | Key alias |
-| `YUYU_KEY_PASSWORD` | Key password |
+See [`docs/RELEASING.md`](docs/RELEASING.md) for versioning, the signing
+secrets (keep the keystore backed up and never change it) and installing on a
+phone.
 
 ## Module map
 

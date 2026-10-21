@@ -11,7 +11,8 @@ plugins {
  */
 val appLinkHost: String = providers.gradleProperty("yuyu.appLinkHost").getOrElse("yuyu.idliapps.com")
 
-// CI passes the run number and tag so every build has a unique, increasing version.
+// CI passes the commit count as versionCode and a computed version name
+// (docs/RELEASING.md), so published builds always increase.
 val yuyuVersionCode: Int = providers.gradleProperty("yuyu.versionCode").map(String::toInt).getOrElse(1)
 val yuyuVersionName: String = providers.gradleProperty("yuyu.versionName").getOrElse("0.1.0")
 
