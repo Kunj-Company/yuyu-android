@@ -58,6 +58,8 @@ import com.twilighty.yuyu.core.designsystem.theme.YuyuSpacing
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.network.model.FieldType
 import com.twilighty.yuyu.core.network.model.RegistrationFieldDto
+import com.twilighty.yuyu.feature.attendee.common.AnimatedReveal
+import com.twilighty.yuyu.feature.attendee.common.AnimatedRevealValue
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -83,7 +85,8 @@ fun DynamicForm(
     val visible = FormLogic.visibleKeys(fields, state, rules)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(YuyuSpacing.sectionGap)) {
         fields.forEach { field ->
-            if (field.key in visible) {
+            // "Show only if" questions expand into place instead of popping in.
+            AnimatedReveal(field.key in visible) {
                 QuestionField(
                     field = field,
                     fields = fields,
@@ -161,7 +164,7 @@ private fun QuestionField(
                     onClick = { onStateChange(FormLogic.setBool(fields, state, key, !checked, rules)) },
                 )
                 help?.let { Caption(it) }
-                error?.let { FieldError(it) }
+                AnimatedRevealValue(error) { FieldError(it) }
             }
         }
         FieldType.RADIO, FieldType.SELECT, FieldType.MULTI_SELECT -> ChoiceQuestion(
@@ -276,7 +279,7 @@ private fun ChoiceQuestion(
                 }
             }
         }
-        if (otherChosen) {
+        AnimatedReveal(otherChosen) {
             YuyuTextField(
                 value = other.text,
                 onValueChange = { onStateChange(FormLogic.setOtherText(fields, state, key, it, rules)) },
@@ -288,7 +291,7 @@ private fun ChoiceQuestion(
             )
         }
         hint?.let { Caption(it) }
-        error?.let { FieldError(it) }
+        AnimatedRevealValue(error) { FieldError(it) }
     }
 }
 
@@ -321,7 +324,7 @@ private fun DateQuestion(
             onClear = if (value.isNotBlank() && enabled) ({ onValue("") }) else null,
         )
         hint?.let { Caption(it) }
-        error?.let { FieldError(it) }
+        AnimatedRevealValue(error) { FieldError(it) }
     }
     if (open) {
         val initial = FormLogic.parseIsoDate(value)?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()

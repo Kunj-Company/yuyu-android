@@ -1,5 +1,12 @@
 package com.twilighty.yuyu.feature.attendee.register
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,11 +53,17 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuButtonSize
 import com.twilighty.yuyu.core.designsystem.component.YuyuButtonVariant
 import com.twilighty.yuyu.core.designsystem.component.YuyuTextField
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
+import com.twilighty.yuyu.core.designsystem.motion.appearOnEnter
 import com.twilighty.yuyu.core.designsystem.theme.YuyuRadius
 import com.twilighty.yuyu.core.designsystem.theme.YuyuSpacing
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.network.model.RsvpStatus
+import com.twilighty.yuyu.feature.attendee.common.AnimatedRevealValue
 import com.twilighty.yuyu.feature.attendee.common.eventWhen
+import com.twilighty.yuyu.feature.attendee.common.successPop
 import com.twilighty.yuyu.feature.attendee.event.RegisterCta
 import com.twilighty.yuyu.feature.attendee.form.DynamicForm
 
@@ -88,29 +101,55 @@ internal fun RegisterScreen(
     EventAccentScope(state.event?.accentColor) {
         Scaffold(
             topBar = { YuyuTopBar(if (state.outcome != null) "" else "Register", onBack = onBack, backLabel = if (state.outcome != null) "Close" else "Back") },
-            bottomBar = { if (showForm) SubmitBar(state, onSubmit) },
+            bottomBar = {
+                val reduced = LocalReducedMotion.current
+                AnimatedVisibility(
+                    visible = showForm,
+                    enter = if (reduced) EnterTransition.None else slideInVertically(YuyuSpecs.standard(delayMillis = 120)) { it } + fadeIn(YuyuSpecs.standard(delayMillis = 120)),
+                    exit = if (reduced) ExitTransition.None else slideOutVertically(YuyuSpecs.standard()) { it } + fadeOut(YuyuSpecs.quick()),
+                    label = "submitBar",
+                ) { SubmitBar(state, onSubmit) }
+            },
             containerColor = YuyuTheme.colors.bgCanvas,
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
-                val outcome = state.outcome
-                val blocked = state.blocked
-                when {
-                    state.loading -> LoadingState(label = "Loading the form")
-                    state.event == null -> MessageState(
-                        mood = if (state.offline) DotFaceMood.Sleepy else DotFaceMood.Sad,
-                        title = if (state.offline) "You're offline" else "Couldn't load the form",
-                        body = state.loadError,
-                        actionLabel = "Try again",
-                        onAction = onRetry,
-                    )
-                    outcome != null -> OutcomeView(outcome, state, onOpenTicket, onBack)
-                    blocked != null -> BlockedView(blocked, onOpenTicket, onBack)
-                    else -> RegisterForm(state, onNameChange, onEmailChange, onAnswersChange)
+                YuyuStateTransition(
+                    targetState = state,
+                    modifier = Modifier.fillMaxSize(),
+                    contentKey = { it.phase },
+                    label = "register",
+                ) { shown ->
+                    val outcome = shown.outcome
+                    val blocked = shown.blocked
+                    when (shown.phase) {
+                        RegisterPhase.Loading -> LoadingState(label = "Loading the form")
+                        RegisterPhase.LoadError -> MessageState(
+                            mood = if (shown.offline) DotFaceMood.Sleepy else DotFaceMood.Sad,
+                            title = if (shown.offline) "You're offline" else "Couldn't load the form",
+                            body = shown.loadError,
+                            actionLabel = "Try again",
+                            onAction = onRetry,
+                        )
+                        RegisterPhase.Outcome -> if (outcome != null) OutcomeView(outcome, shown, onOpenTicket, onBack)
+                        RegisterPhase.Blocked -> if (blocked != null) BlockedView(blocked, onOpenTicket, onBack)
+                        RegisterPhase.Form -> RegisterForm(shown, onNameChange, onEmailChange, onAnswersChange)
+                    }
                 }
             }
         }
     }
 }
+
+private enum class RegisterPhase { Loading, LoadError, Outcome, Blocked, Form }
+
+private val RegisterUiState.phase: RegisterPhase
+    get() = when {
+        loading -> RegisterPhase.Loading
+        event == null -> RegisterPhase.LoadError
+        outcome != null -> RegisterPhase.Outcome
+        blocked != null -> RegisterPhase.Blocked
+        else -> RegisterPhase.Form
+    }
 
 @Composable
 private fun RegisterForm(
@@ -129,14 +168,14 @@ private fun RegisterForm(
             .padding(horizontal = YuyuSpacing.gutter, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(YuyuSpacing.sectionGap),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.appearOnEnter(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(event.title, style = YuyuTheme.typography.h2, color = YuyuTheme.accent.accentText, modifier = Modifier.semantics { heading() })
             Text(eventWhen(event.startDateTime, event.timezone), style = YuyuTheme.typography.bodyUi, color = c.textSecondary)
         }
         val user = state.user
         if (user != null && !state.needsName) {
             Column(
-                Modifier.fillMaxWidth().background(c.bgSubtle, YuyuRadius.large).padding(14.dp),
+                Modifier.fillMaxWidth().appearOnEnter(delayMillis = 60).background(c.bgSubtle, YuyuRadius.large).padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text("Registering as ${user.name}", style = YuyuTheme.typography.label, color = c.text)
@@ -151,7 +190,7 @@ private fun RegisterForm(
                 error = state.nameError,
                 useAccentFocus = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
-                modifier = Modifier.testTag("identity-name"),
+                modifier = Modifier.appearOnEnter(delayMillis = 60).testTag("identity-name"),
             )
         }
         if (state.isGuest) {
@@ -163,11 +202,12 @@ private fun RegisterForm(
                 error = state.emailError,
                 useAccentFocus = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-                modifier = Modifier.testTag("identity-email"),
+                modifier = Modifier.appearOnEnter(delayMillis = 90).testTag("identity-email"),
             )
         }
         if (state.fields.isNotEmpty()) {
             DynamicForm(
+                modifier = Modifier.appearOnEnter(delayMillis = 120),
                 fields = state.fields,
                 state = state.answers,
                 errors = state.errors,
@@ -189,14 +229,14 @@ private fun SubmitBar(state: RegisterUiState, onSubmit: () -> Unit) {
                 1 -> "One answer needs a quick fix before you can register."
                 else -> "${state.problemCount} answers need a quick fix before you can register."
             }
-            if (problem != null) {
+            AnimatedRevealValue(problem) { shownProblem ->
                 Row(
                     Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("form-problem"),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = c.dangerFg)
-                    Text(problem, style = YuyuTheme.typography.caption, color = c.dangerFg)
+                    Text(shownProblem, style = YuyuTheme.typography.caption, color = c.dangerFg)
                 }
             }
             YuyuButton(
@@ -226,6 +266,7 @@ private fun OutcomeView(outcome: RegisterOutcome, state: RegisterUiState, onOpen
             secondaryLabel = "Back to the event",
             onSecondary = onDone,
             tag = "outcome-confirmed",
+            celebrate = true,
         )
         RegisterOutcome.Waitlisted -> ResultView(
             mood = DotFaceMood.Waiting,
@@ -297,24 +338,28 @@ private fun ResultView(
     secondaryLabel: String,
     onSecondary: () -> Unit,
     tag: String,
+    celebrate: Boolean = false,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp).testTag(tag),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
     ) {
-        DotFace(mood = mood, size = 112.dp, interactive = true)
+        // A confirmed registration gets a quick pop; the other outcomes just settle in.
+        DotFace(mood = mood, size = 112.dp, interactive = true, modifier = Modifier.successPop(enabled = celebrate, from = 0.5f).appearOnEnter())
         Text(
             title,
             style = YuyuTheme.typography.displayM,
             color = YuyuTheme.colors.text,
             textAlign = TextAlign.Center,
-            modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
+            modifier = Modifier.appearOnEnter(delayMillis = 60).semantics { heading(); liveRegion = LiveRegionMode.Polite },
         )
-        Text(body, style = YuyuTheme.typography.bodyL, color = YuyuTheme.colors.textSecondary, textAlign = TextAlign.Center)
-        if (primaryLabel != null) {
-            YuyuButton(primaryLabel, onPrimary, variant = YuyuButtonVariant.Accent, size = YuyuButtonSize.Large, leadingIcon = Icons.Outlined.ConfirmationNumber, fullWidth = true)
+        Text(body, style = YuyuTheme.typography.bodyL, color = YuyuTheme.colors.textSecondary, textAlign = TextAlign.Center, modifier = Modifier.appearOnEnter(delayMillis = 100))
+        Column(Modifier.fillMaxWidth().appearOnEnter(delayMillis = 140), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (primaryLabel != null) {
+                YuyuButton(primaryLabel, onPrimary, variant = YuyuButtonVariant.Accent, size = YuyuButtonSize.Large, leadingIcon = Icons.Outlined.ConfirmationNumber, fullWidth = true)
+            }
+            YuyuButton(secondaryLabel, onSecondary, variant = YuyuButtonVariant.Secondary, fullWidth = true)
         }
-        YuyuButton(secondaryLabel, onSecondary, variant = YuyuButtonVariant.Secondary, fullWidth = true)
     }
 }
