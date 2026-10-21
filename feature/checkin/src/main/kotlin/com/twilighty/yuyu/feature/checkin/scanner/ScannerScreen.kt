@@ -1,5 +1,14 @@
 package com.twilighty.yuyu.feature.checkin.scanner
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,7 +32,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -44,6 +55,9 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuCard
 import com.twilighty.yuyu.core.designsystem.component.YuyuCardTone
 import com.twilighty.yuyu.core.designsystem.component.YuyuSnackbarHost
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.AnimatedCounterText
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.feature.checkin.domain.CheckInTime
 import com.twilighty.yuyu.feature.checkin.domain.SyncOutcome
@@ -61,6 +75,7 @@ internal fun ScannerScreen(onBack: () -> Unit, viewModel: ScannerViewModel = hil
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val reduced = LocalReducedMotion.current
 
     KeepScreenOn()
     ResultFeedback(viewModel.feedback)
@@ -91,7 +106,11 @@ internal fun ScannerScreen(onBack: () -> Unit, viewModel: ScannerViewModel = hil
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            if (state.showOfflineBanner) OfflineBanner(state, onSync = viewModel::syncNow)
+            AnimatedVisibility(
+                visible = state.showOfflineBanner,
+                enter = bannerEnter(reduced),
+                exit = bannerExit(reduced),
+            ) { OfflineBanner(state, onSync = viewModel::syncNow) }
             CounterTile(state.counts)
             FindGuestPanel(
                 mode = state.mode,
@@ -105,9 +124,20 @@ internal fun ScannerScreen(onBack: () -> Unit, viewModel: ScannerViewModel = hil
                 fastMode = state.fastMode,
                 onFastModeChange = viewModel::setFastMode,
             )
-            state.syncReport?.let { SyncReportCard(it, onDismiss = viewModel::dismissSyncReport) }
+            // Keep the last report while it animates out after "Done".
+            var lastReport by remember { mutableStateOf(state.syncReport) }
+            state.syncReport?.let { lastReport = it }
+            AnimatedVisibility(
+                visible = state.syncReport != null,
+                enter = bannerEnter(reduced),
+                exit = bannerExit(reduced),
+            ) { lastReport?.let { SyncReportCard(it, onDismiss = viewModel::dismissSyncReport) } }
             OfflineReadiness(state, onDownload = viewModel::downloadRoster)
-            if (state.pending.isNotEmpty()) PendingList(state)
+            AnimatedVisibility(
+                visible = state.pending.isNotEmpty(),
+                enter = bannerEnter(reduced),
+                exit = bannerExit(reduced),
+            ) { PendingList(state) }
             RecentCheckIns(state.recent)
         }
     }
@@ -124,19 +154,27 @@ internal fun ScannerScreen(onBack: () -> Unit, viewModel: ScannerViewModel = hil
     }
 }
 
+private fun bannerEnter(reduced: Boolean): EnterTransition =
+    if (reduced) EnterTransition.None else expandVertically(YuyuSpecs.standard()) + fadeIn(YuyuSpecs.standard(delayMillis = 60))
+
+private fun bannerExit(reduced: Boolean): ExitTransition =
+    if (reduced) ExitTransition.None else fadeOut(YuyuSpecs.quick()) + shrinkVertically(YuyuSpecs.standard())
+
 @Composable
 private fun OfflineBanner(state: ScannerUiState, onSync: () -> Unit) {
     val c = YuyuTheme.colors
-    YuyuCard(tone = YuyuCardTone.Tint) {
+    YuyuCard(tone = YuyuCardTone.Tint, modifier = Modifier.animateContentSize(YuyuSpecs.standard())) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(if (state.online) Icons.Outlined.CloudSync else Icons.Outlined.CloudOff, contentDescription = null, tint = c.warningFg)
+            Crossfade(state.online, animationSpec = YuyuSpecs.quick(), label = "bannerIcon") { online ->
+                Icon(if (online) Icons.Outlined.CloudSync else Icons.Outlined.CloudOff, contentDescription = null, tint = c.warningFg)
+            }
             Column(Modifier.weight(1f)) {
                 val waiting = when (state.pendingCount) {
                     0 -> "no check-ins waiting to sync"
                     1 -> "1 check-in waiting to sync"
                     else -> "${state.pendingCount} check-ins waiting to sync"
                 }
-                Text(
+                AnimatedCounterText(
                     if (state.online) waiting.replaceFirstChar { it.uppercase() } else "Offline \u2014 $waiting",
                     style = YuyuTheme.typography.label,
                     color = c.text,
@@ -196,7 +234,7 @@ private fun OfflineReadiness(state: ScannerUiState, onDownload: () -> Unit) {
 
 @Composable
 private fun PendingList(state: ScannerUiState) {
-    Column {
+    Column(Modifier.animateContentSize(YuyuSpecs.standard())) {
         SectionHeader("Waiting to sync")
         state.pending.forEach { item ->
             ListRow(

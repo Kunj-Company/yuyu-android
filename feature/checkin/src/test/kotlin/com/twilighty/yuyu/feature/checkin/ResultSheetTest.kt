@@ -1,16 +1,19 @@
 package com.twilighty.yuyu.feature.checkin
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.network.model.LabelValueDto
 import com.twilighty.yuyu.feature.checkin.domain.GateInfo
@@ -118,5 +121,39 @@ class ResultSheetTest {
         compose.onNodeWithText("Too many check-in requests.").assertIsDisplayed()
         update(SheetState.Undone(guest))
         compose.onNodeWithText("Check-in undone", substring = true).assertIsDisplayed()
+    }
+
+    private fun showFromLoading(reducedMotion: Boolean): (SheetState) -> Unit {
+        compose.mainClock.autoAdvance = false
+        var state by mutableStateOf<SheetState>(SheetState.Loading("Checking ticket…"))
+        compose.setContent {
+            YuyuTheme(darkTheme = false) {
+                CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
+                    ResultSheetContent(state, onConfirm = {}, onUndo = {}, onDismiss = {})
+                }
+            }
+        }
+        compose.mainClock.advanceTimeByFrame()
+        assertEquals(1, compose.onAllNodesWithContentDescription("Checking ticket…").fetchSemanticsNodes().size)
+        return { state = it }
+    }
+
+    @Test
+    fun resultIsReadableWithinTheMotionBudget() {
+        val update = showFromLoading(reducedMotion = false)
+        update(SheetState.Admitted(guest, null, offline = false))
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithText("Checked in").assertIsDisplayed()
+        assertEquals(0, compose.onAllNodesWithContentDescription("Checking ticket…").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun reducedMotionSwapsResultsImmediately() {
+        val update = showFromLoading(reducedMotion = true)
+        update(SheetState.Blocked(null, "Ticket not found", "This code doesn't match a ticket."))
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText("Ticket not found").assertIsDisplayed()
+        assertEquals(0, compose.onAllNodesWithContentDescription("Checking ticket…").fetchSemanticsNodes().size)
     }
 }

@@ -1,5 +1,12 @@
 package com.twilighty.yuyu.feature.checkin.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,6 +45,9 @@ import com.twilighty.yuyu.core.designsystem.component.StatusTone
 import com.twilighty.yuyu.core.designsystem.component.YuyuButton
 import com.twilighty.yuyu.core.designsystem.component.YuyuButtonSize
 import com.twilighty.yuyu.core.designsystem.component.YuyuButtonVariant
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.fadeThrough
 import com.twilighty.yuyu.core.designsystem.theme.YuyuRadius
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.network.model.LabelValueDto
@@ -55,6 +65,7 @@ internal fun ResultSheetContent(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val reduced = LocalReducedMotion.current
     Column(
         modifier
             .fillMaxWidth()
@@ -62,25 +73,45 @@ internal fun ResultSheetContent(
             .padding(horizontal = 16.dp)
             .padding(bottom = 24.dp)
             .semantics { liveRegion = LiveRegionMode.Polite },
-        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        when (state) {
-            SheetState.Hidden -> Unit
-            is SheetState.Loading -> Box(Modifier.fillMaxWidth().heightIn(min = 180.dp), contentAlignment = Alignment.Center) {
-                DotLoader(size = 56.dp, label = state.label)
-            }
-            is SheetState.Ready -> ReadyContent(state, onConfirm, onDismiss)
-            is SheetState.Admitted -> AdmittedContent(state, onUndo, onDismiss)
-            is SheetState.AlreadyIn -> AlreadyInContent(state, onDismiss)
-            is SheetState.Blocked -> BlockedContent(state, onDismiss)
-            is SheetState.Undone -> {
-                GuestHeader(state.guest)
-                Text("Check-in undone. The guest can be checked in again.", style = YuyuTheme.typography.bodyUi, color = YuyuTheme.colors.textSecondary)
-                YuyuButton("Next guest", onDismiss, size = YuyuButtonSize.Large, fullWidth = true)
+        AnimatedContent(
+            targetState = state,
+            contentKey = { it::class },
+            transitionSpec = {
+                when {
+                    reduced -> instantSwap()
+                    // Results spring in so the outcome reads at a glance; the old content gets out of the way fast.
+                    targetState.isResult ->
+                        (scaleIn(YuyuSpecs.pop(), initialScale = 0.9f) + fadeIn(tween(120))) togetherWith
+                            fadeOut(tween(90)) using SizeTransform(clip = false)
+                    else -> fadeThrough(reduced = false)
+                }
+            },
+            label = "checkInResult",
+        ) { shown ->
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                when (shown) {
+                    SheetState.Hidden -> Unit
+                    is SheetState.Loading -> Box(Modifier.fillMaxWidth().heightIn(min = 180.dp), contentAlignment = Alignment.Center) {
+                        DotLoader(size = 56.dp, label = shown.label)
+                    }
+                    is SheetState.Ready -> ReadyContent(shown, onConfirm, onDismiss)
+                    is SheetState.Admitted -> AdmittedContent(shown, onUndo, onDismiss)
+                    is SheetState.AlreadyIn -> AlreadyInContent(shown, onDismiss)
+                    is SheetState.Blocked -> BlockedContent(shown, onDismiss)
+                    is SheetState.Undone -> {
+                        GuestHeader(shown.guest)
+                        Text("Check-in undone. The guest can be checked in again.", style = YuyuTheme.typography.bodyUi, color = YuyuTheme.colors.textSecondary)
+                        YuyuButton("Next guest", onDismiss, size = YuyuButtonSize.Large, fullWidth = true)
+                    }
+                }
             }
         }
     }
 }
+
+private val SheetState.isResult: Boolean
+    get() = this is SheetState.Admitted || this is SheetState.AlreadyIn || this is SheetState.Blocked
 
 @Composable
 private fun ColumnScope.ReadyContent(state: SheetState.Ready, onConfirm: () -> Unit, onDismiss: () -> Unit) {
@@ -127,7 +158,12 @@ private fun ColumnScope.ReadyContent(state: SheetState.Ready, onConfirm: () -> U
 @Composable
 private fun AdmittedContent(state: SheetState.Admitted, onUndo: () -> Unit, onDismiss: () -> Unit) {
     val c = YuyuTheme.colors
-    SolidPanel(background = c.successSolid, icon = Icons.Outlined.CheckCircle, title = "Checked in") {
+    SolidPanel(
+        background = c.successSolid,
+        icon = Icons.Outlined.CheckCircle,
+        title = "Checked in",
+        modifier = Modifier.flashOnEnter(YuyuRadius.extraLarge),
+    ) {
         Text(state.guest.displayName, style = YuyuTheme.typography.displayM, color = OnSolid)
         val time = CheckInTime.time(state.checkedInAt)
         Text(
@@ -167,13 +203,14 @@ private fun AlreadyInContent(state: SheetState.AlreadyIn, onDismiss: () -> Unit)
     Column(
         Modifier
             .fillMaxWidth()
+            .shakeOn(Unit, amplitude = 5.dp)
             .background(c.warningBg, YuyuRadius.extraLarge)
             .border(BorderStroke(2.dp, c.warningSolid), YuyuRadius.extraLarge)
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = c.warningFg, modifier = Modifier.size(28.dp))
+            Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = c.warningFg, modifier = Modifier.size(28.dp).popOnEnter())
             Text("Already checked in", style = YuyuTheme.typography.h2, color = c.warningFg)
         }
         Text(state.guest.displayName, style = YuyuTheme.typography.displayM, color = c.text)
@@ -192,7 +229,12 @@ private fun AlreadyInContent(state: SheetState.AlreadyIn, onDismiss: () -> Unit)
 
 @Composable
 private fun BlockedContent(state: SheetState.Blocked, onDismiss: () -> Unit) {
-    SolidPanel(background = YuyuTheme.colors.dangerSolid, icon = Icons.Outlined.HighlightOff, title = state.title) {
+    SolidPanel(
+        background = YuyuTheme.colors.dangerSolid,
+        icon = Icons.Outlined.HighlightOff,
+        title = state.title,
+        modifier = Modifier.shakeOn(Unit),
+    ) {
         state.guest?.let { guest ->
             Text(guest.displayName, style = YuyuTheme.typography.h1, color = OnSolid)
             Text(statusLabel(guest.status), style = YuyuTheme.typography.label, color = OnSolid)
@@ -213,16 +255,22 @@ private fun BlockedContent(state: SheetState.Blocked, onDismiss: () -> Unit) {
 private val OnSolid = Color.White
 
 @Composable
-private fun SolidPanel(background: Color, icon: ImageVector, title: String, content: @Composable ColumnScope.() -> Unit) {
+private fun SolidPanel(
+    background: Color,
+    icon: ImageVector,
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             .background(background, YuyuRadius.extraLarge)
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(icon, contentDescription = null, tint = OnSolid, modifier = Modifier.size(36.dp))
+            Icon(icon, contentDescription = null, tint = OnSolid, modifier = Modifier.size(36.dp).popOnEnter())
             Text(title, style = YuyuTheme.typography.h2, color = OnSolid)
         }
         content()
