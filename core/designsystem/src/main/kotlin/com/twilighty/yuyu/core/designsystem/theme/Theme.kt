@@ -14,6 +14,7 @@ import com.twilighty.yuyu.core.common.AppearanceMode
 import com.twilighty.yuyu.core.designsystem.accent.AccentColors
 import com.twilighty.yuyu.core.designsystem.accent.AccentMath
 import com.twilighty.yuyu.core.designsystem.accent.LocalAccentColors
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
 
 /**
  * Yuyu theme. Provides [YuyuColors], [YuyuTypography] and the default (ink)
@@ -40,6 +41,7 @@ fun YuyuTheme(darkTheme: Boolean, content: @Composable () -> Unit) {
         LocalYuyuColors provides colors,
         LocalYuyuTypography provides typography,
         LocalAccentColors provides AccentColors.from(AccentMath.tokens(AccentMath.INK_ACCENT, darkTheme)),
+        LocalReducedMotion provides rememberReducedMotion(),
     ) {
         MaterialTheme(
             colorScheme = colors.toColorScheme(),
