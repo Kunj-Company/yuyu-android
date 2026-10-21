@@ -134,23 +134,29 @@ class SignInViewModel @Inject constructor(
     fun onGoogleError(message: String) = state.update { it.copy(error = message) }
 
     private fun handleError(error: AppError) {
-        if (error is AppError.MfaRequired) code = ""
+        val onCodeStep = state.value.step == SignInStep.Mfa
+        // The server reports a wrong code as INVALID_REQUEST "Email or password is
+        // incorrect." (the email and password were already accepted to reach this
+        // step), so on the code step treat it as a rejected code.
+        val codeRejected = onCodeStep && error is AppError.InvalidRequest && error.fieldErrors.isEmpty()
+        if (error is AppError.MfaRequired || codeRejected) code = ""
         state.update { s ->
-            when (error) {
-                is AppError.MfaRequired -> s.copy(
+            when {
+                error is AppError.MfaRequired -> s.copy(
                     submitting = false,
                     // A code was sent and rejected again: stay on the step and say so.
-                    error = if (s.step == SignInStep.Mfa) "That code didn't work. Check it and try again." else null,
+                    error = if (s.step == SignInStep.Mfa) codeRejectedMessage(s.useRecoveryCode) else null,
                     step = SignInStep.Mfa,
                 )
-                is AppError.EmailVerificationRequired -> s.copy(submitting = false, error = error.message, needsEmailVerification = true)
-                is AppError.InvalidRequest -> s.copy(
+                codeRejected -> s.copy(submitting = false, error = codeRejectedMessage(s.useRecoveryCode))
+                error is AppError.EmailVerificationRequired -> s.copy(submitting = false, error = error.message, needsEmailVerification = true)
+                error is AppError.InvalidRequest -> s.copy(
                     submitting = false,
                     error = error.message.takeIf { error.fieldErrors.isEmpty() },
                     emailError = error.fieldErrors["email"]?.firstOrNull(),
                     passwordError = error.fieldErrors["password"]?.firstOrNull(),
                 )
-                is AppError.RateLimited -> s.copy(
+                error is AppError.RateLimited -> s.copy(
                     submitting = false,
                     error = error.retryAfterSeconds?.let { secs ->
                         "Too many attempts. Try again in ${if (secs >= 60) "${(secs + 59) / 60} min" else "$secs s"}."
@@ -160,6 +166,13 @@ class SignInViewModel @Inject constructor(
             }
         }
     }
+
+    private fun codeRejectedMessage(recoveryCode: Boolean) =
+        if (recoveryCode) {
+            "That recovery code didn't work. Check it and try again."
+        } else {
+            "That code didn't work. Check your authenticator app and try again."
+        }
 
     fun webUrl(path: String): String? = authRepository.webUrl(path)
 

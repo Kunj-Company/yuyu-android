@@ -79,6 +79,43 @@ class SignInViewModelTest {
     }
 
     @Test
+    fun wrongCodeOnCodeStepShowsCodeMessageNotPasswordMessage() = runTest {
+        // The server answers a wrong code with INVALID_REQUEST "Email or password is incorrect."
+        auth.next = { totp ->
+            if (totp == null) AppResult.Failure(AppError.MfaRequired())
+            else AppResult.Failure(AppError.InvalidRequest("Email or password is incorrect."))
+        }
+        val vm = SignInViewModel(auth)
+        vm.onEmailChange("ada@example.test")
+        vm.onPasswordChange("correct horse")
+        vm.submit()
+        assertEquals(SignInStep.Mfa, vm.uiState.value.step)
+
+        vm.onCodeChange("000000")
+        vm.submit()
+        assertEquals(SignInStep.Mfa, vm.uiState.value.step)
+        assertEquals("That code didn't work. Check your authenticator app and try again.", vm.uiState.value.error)
+        assertEquals("", vm.code)
+        assertFalse(vm.uiState.value.submitting)
+
+        vm.toggleRecoveryCode()
+        vm.onCodeChange("abcd-efgh")
+        vm.submit()
+        assertEquals("That recovery code didn't work. Check it and try again.", vm.uiState.value.error)
+    }
+
+    @Test
+    fun wrongPasswordOnCredentialsStepKeepsServerMessage() = runTest {
+        auth.next = { AppResult.Failure(AppError.InvalidRequest("Email or password is incorrect.")) }
+        val vm = SignInViewModel(auth)
+        vm.onEmailChange("ada@example.test")
+        vm.onPasswordChange("wrong")
+        vm.submit()
+        assertEquals(SignInStep.Credentials, vm.uiState.value.step)
+        assertEquals("Email or password is incorrect.", vm.uiState.value.error)
+    }
+
+    @Test
     fun rateLimitShowsRetryTime() = runTest {
         auth.next = { AppResult.Failure(AppError.RateLimited(retryAfterSeconds = 120)) }
         val vm = SignInViewModel(auth)
