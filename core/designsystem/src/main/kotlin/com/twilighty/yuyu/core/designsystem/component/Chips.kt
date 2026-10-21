@@ -83,15 +83,18 @@ fun YuyuChip(text: String, modifier: Modifier = Modifier, style: YuyuChipStyle =
 
 @Composable
 private fun ChipSurface(text: String, bg: Color, fg: Color, modifier: Modifier, icon: ImageVector?) {
+    // Status changes (pending → approved) cross-fade instead of snapping.
+    val surfaceBg by animateColorAsState(bg, YuyuSpecs.quick(), label = "chipSurfaceBg")
+    val surfaceFg by animateColorAsState(fg, YuyuSpecs.quick(), label = "chipSurfaceFg")
     Row(
         modifier
-            .background(bg, YuyuRadius.pill)
+            .background(surfaceBg, YuyuRadius.pill)
             .padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (icon != null) Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(14.dp))
-        Text(text, style = YuyuTheme.typography.chip, color = fg, maxLines = 1)
+        if (icon != null) Icon(icon, contentDescription = null, tint = surfaceFg, modifier = Modifier.size(14.dp))
+        Text(text, style = YuyuTheme.typography.chip, color = surfaceFg, maxLines = 1)
     }
 }
 

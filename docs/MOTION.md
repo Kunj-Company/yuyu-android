@@ -13,15 +13,17 @@ HOVER 180, PANEL 240 and SUCCESS 360 ms, with the standard easing. Helpers are i
 | Need | Use |
 | --- | --- |
 | Screen push/pop, tab switch | Automatic: `YuyuNavTransitions` on both NavHosts (shared-axis slide for depth, fade-through for tabs, predictive back) |
-| Loading → content → error swap | `YuyuStateTransition(state) { … }` (keys on the state's class, so refreshes don't re-animate) |
-| List items appearing | `val entrance = rememberEntranceState()` per list, then `Modifier.staggeredEntrance(entrance, key, index)` |
+| Loading → content → error swap | `YuyuStateTransition(state) { … }` (keys on the state's class, so refreshes don't re-animate; for enum states pass `contentKey = { it }`) |
+| Instant swap (reduced motion) | `instantSwap()`: no enter, exit or size animation |
+| Rejected input (wrong PIN, invalid scan) | `Modifier.shakeOn(errorTrigger)` |
+| List items appearing | `val entrance = rememberEntranceState(filter)` per list (keys replay entrances), then `Modifier.staggeredEntrance(entrance, key, index)` |
 | One-off section appearing | `Modifier.appearOnEnter(delayMillis)` |
 | Press feedback on custom tappables | `Modifier.pressScale(interactionSource)` (buttons and clickable cards already have it) |
 | Changing numbers (counts, totals) | `AnimatedCounterText` (StatTile already uses it) |
 | Expand/collapse | `AnimatedVisibility` or `Modifier.animateContentSize(YuyuSpecs.standard())` |
 | Specs | `YuyuSpecs.standard()`, `.quick()`, `.settle()` (spring), `.pop()` (bouncy spring, for success moments) |
 
-Built into components: button press spring and smooth loading-label resize,
+Built into components: status-chip colour cross-fade; button press spring and smooth loading-label resize,
 clickable-card press, sliding segmented-control pill, filter-chip colour and
 check animation, animated progress fill, rolling stat counters, field error
 fade, and empty/error state entrance.
