@@ -1,5 +1,6 @@
 package com.twilighty.yuyu.feature.auth.account
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,6 +52,9 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuCardTone
 import com.twilighty.yuyu.core.designsystem.component.YuyuSnackbarHost
 import com.twilighty.yuyu.core.designsystem.component.YuyuTextField
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.rememberEntranceState
+import com.twilighty.yuyu.core.designsystem.motion.staggeredEntrance
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.designsystem.util.openInBrowser
 import com.twilighty.yuyu.feature.auth.google.clearGoogleCredentialState
@@ -77,6 +81,9 @@ fun AccountScreen(
     }
     val c = YuyuTheme.colors
     val t = YuyuTheme.typography
+    val entrance = rememberEntranceState()
+    // Sections rise in one after another the first time the tab opens.
+    fun Modifier.section(key: String, index: Int) = staggeredEntrance(entrance, key, index)
     Scaffold(
         topBar = { YuyuTopBar("Account") },
         snackbarHost = { YuyuSnackbarHost(snackbar) },
@@ -90,7 +97,10 @@ fun AccountScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            YuyuCard(shape = com.twilighty.yuyu.core.designsystem.theme.YuyuRadius.extraExtraLarge) {
+            YuyuCard(
+                shape = com.twilighty.yuyu.core.designsystem.theme.YuyuRadius.extraExtraLarge,
+                modifier = Modifier.section("profile", 0).animateContentSize(YuyuSpecs.standard()),
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     YuyuAvatar(state.user?.name ?: state.user?.email, imageUrl = state.user?.imageUrl, size = 56.dp)
                     Column(Modifier.weight(1f)) {
@@ -112,15 +122,16 @@ fun AccountScreen(
                 YuyuButton("Edit name", viewModel::startEditName, variant = YuyuButtonVariant.Quiet, leadingIcon = Icons.Outlined.Edit)
             }
 
-            SectionHeader("Appearance")
+            SectionHeader("Appearance", modifier = Modifier.section("appearanceHeader", 1))
             SegmentedControl(
                 options = listOf("Light", "Dark", "System"),
                 selectedIndex = AppearanceOptions.indexOf(state.appearance),
                 onSelect = { viewModel.setAppearance(AppearanceOptions[it]) },
+                modifier = Modifier.section("appearance", 1),
             )
 
-            SectionHeader("Volunteering")
-            YuyuCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            SectionHeader("Volunteering", modifier = Modifier.section("volunteeringHeader", 2))
+            YuyuCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), modifier = Modifier.section("volunteering", 2)) {
                 ListRow(
                     title = "Open a check-in station",
                     supporting = "Run a door desk with the PIN from the organiser",
@@ -130,8 +141,8 @@ fun AccountScreen(
                 )
             }
 
-            SectionHeader("Security")
-            YuyuCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            SectionHeader("Security", modifier = Modifier.section("securityHeader", 3))
+            YuyuCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), modifier = Modifier.section("security", 3)) {
                 ListRow(
                     title = "Open security settings on the web",
                     supporting = "Password, two-step sign-in and sign-in methods",
@@ -167,9 +178,10 @@ fun AccountScreen(
                 variant = YuyuButtonVariant.Secondary,
                 fullWidth = true,
                 enabled = !state.busy,
+                modifier = Modifier.section("signOut", 4),
             )
 
-            YuyuCard(tone = YuyuCardTone.Danger) {
+            YuyuCard(tone = YuyuCardTone.Danger, modifier = Modifier.section("signOutEverywhere", 5)) {
                 Text("Sign out everywhere", style = t.h4, color = c.dangerFg)
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -185,7 +197,7 @@ fun AccountScreen(
                 "Yuyu for Android ${state.versionName}",
                 style = t.caption,
                 color = c.textMuted,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                modifier = Modifier.section("version", 6).fillMaxWidth().padding(bottom = 16.dp),
             )
         }
     }
