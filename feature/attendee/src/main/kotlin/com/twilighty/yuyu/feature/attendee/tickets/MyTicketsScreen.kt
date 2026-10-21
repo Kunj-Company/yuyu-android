@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,7 +16,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyItemScope
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Download
@@ -57,6 +59,8 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuIconButton
 import com.twilighty.yuyu.core.designsystem.component.YuyuSnackbarHost
 import com.twilighty.yuyu.core.designsystem.component.YuyuSwitchRow
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
+import com.twilighty.yuyu.core.designsystem.motion.rememberEntranceState
 import com.twilighty.yuyu.core.designsystem.theme.YuyuRadius
 import com.twilighty.yuyu.core.designsystem.theme.YuyuSpacing
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
@@ -65,6 +69,7 @@ import com.twilighty.yuyu.core.network.model.RegistrationDto
 import com.twilighty.yuyu.feature.attendee.common.EventDateBlock
 import com.twilighty.yuyu.feature.attendee.common.RsvpStatusChip
 import com.twilighty.yuyu.feature.attendee.common.eventWhen
+import com.twilighty.yuyu.feature.attendee.common.listItemMotion
 import com.twilighty.yuyu.feature.attendee.common.venueLabel
 
 @Composable
@@ -157,12 +162,19 @@ internal fun MyTicketsScreen(
             onRefresh = onRefresh,
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
-            when {
-                state.loading -> LoadingState(label = "Loading your tickets")
-                state.error != null && state.isEmpty -> LazyColumn(Modifier.fillMaxSize()) {
-                    item { ErrorState(state.error, title = "Couldn't load your tickets", onRetry = onRefresh) }
+            YuyuStateTransition(
+                targetState = state,
+                modifier = Modifier.fillMaxSize(),
+                contentKey = { it.phase },
+                label = "tickets",
+            ) { shown ->
+                when (shown.phase) {
+                    TicketsPhase.Loading -> LoadingState(label = "Loading your tickets")
+                    TicketsPhase.Error -> LazyColumn(Modifier.fillMaxSize()) {
+                        item { ErrorState(shown.error.orEmpty(), title = "Couldn't load your tickets", onRetry = onRefresh) }
+                    }
+                    TicketsPhase.Content -> TicketsList(shown, onOpenRegistration, onOpenEvent, onAskCancel, onRemindersChange, onSaveCertificate, onShareCertificate, onDiscover)
                 }
-                else -> TicketsList(state, onOpenRegistration, onOpenEvent, onAskCancel, onRemindersChange, onSaveCertificate, onShareCertificate, onDiscover)
             }
         }
     }
@@ -191,6 +203,15 @@ internal fun MyTicketsScreen(
     }
 }
 
+private enum class TicketsPhase { Loading, Error, Content }
+
+private val MyTicketsUiState.phase: TicketsPhase
+    get() = when {
+        loading -> TicketsPhase.Loading
+        error != null && isEmpty -> TicketsPhase.Error
+        else -> TicketsPhase.Content
+    }
+
 @Composable
 private fun TicketsList(
     state: MyTicketsUiState,
@@ -202,16 +223,23 @@ private fun TicketsList(
     onShareCertificate: (CertificateDto) -> Unit,
     onDiscover: () -> Unit,
 ) {
+    val entrance = rememberEntranceState()
     LazyColumn(
         Modifier.fillMaxSize().testTag("tickets-list"),
         contentPadding = PaddingValues(horizontal = YuyuSpacing.gutter, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // Running position for the first-appearance stagger (capped by the helper).
+        var position = 0
+        fun LazyListScope.motionItem(key: String, content: @Composable LazyItemScope.() -> Unit) {
+            val index = position++
+            item(key) { Box(Modifier.listItemMotion(this, entrance, key, index)) { content() } }
+        }
         if (state.offline) {
-            item("offline") { OfflineBanner() }
+            motionItem("offline") { OfflineBanner() }
         }
         if (state.upcoming.isEmpty() && state.past.isEmpty()) {
-            item("empty") {
+            motionItem("empty") {
                 EmptyState(
                     title = "No tickets yet",
                     body = "When you register for an event, your ticket shows up here, ready for the door even offline.",
@@ -221,11 +249,11 @@ private fun TicketsList(
             }
         }
         if (state.upcoming.isNotEmpty()) {
-            item("upcoming-header") { SectionHeader("Upcoming") }
-            items(state.upcoming, key = { "u-" + it.rsvpId }) { reg ->
-                RegistrationCard(reg, onOpenRegistration, onOpenEvent, onAskCancel)
+            motionItem("upcoming-header") { SectionHeader("Upcoming") }
+            state.upcoming.forEach { reg ->
+                motionItem("u-" + reg.rsvpId) { RegistrationCard(reg, onOpenRegistration, onOpenEvent, onAskCancel) }
             }
-            item("reminders") {
+            motionItem("reminders") {
                 YuyuSwitchRow(
                     title = "Remind me before events",
                     description = "A notification the day before and an hour before.",
@@ -235,19 +263,21 @@ private fun TicketsList(
             }
         }
         if (state.past.isNotEmpty()) {
-            item("past-header") { SectionHeader("Past") }
-            items(state.past, key = { "p-" + it.rsvpId }) { reg ->
-                RegistrationCard(reg, onOpenRegistration, onOpenEvent, onAskCancel, past = true)
+            motionItem("past-header") { SectionHeader("Past") }
+            state.past.forEach { reg ->
+                motionItem("p-" + reg.rsvpId) { RegistrationCard(reg, onOpenRegistration, onOpenEvent, onAskCancel, past = true) }
             }
         }
         if (state.certificates.isNotEmpty()) {
-            item("cert-header") { SectionHeader("Certificates") }
-            items(state.certificates, key = { "c-" + it.certificateUrl }) { cert ->
-                CertificateCard(cert, busy = state.certificateBusy == cert.certificateUrl, onSave = { onSaveCertificate(cert) }, onShare = { onShareCertificate(cert) })
+            motionItem("cert-header") { SectionHeader("Certificates") }
+            state.certificates.forEach { cert ->
+                motionItem("c-" + cert.certificateUrl) {
+                    CertificateCard(cert, busy = state.certificateBusy == cert.certificateUrl, onSave = { onSaveCertificate(cert) }, onShare = { onShareCertificate(cert) })
+                }
             }
         }
         if (state.upcoming.isNotEmpty() || state.past.isNotEmpty()) {
-            item("discover") {
+            motionItem("discover") {
                 YuyuButton(
                     "Discover more events",
                     onDiscover,
