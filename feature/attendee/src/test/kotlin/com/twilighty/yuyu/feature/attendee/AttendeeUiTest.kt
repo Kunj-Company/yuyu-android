@@ -22,6 +22,7 @@ import com.twilighty.yuyu.feature.attendee.form.fieldTag
 import com.twilighty.yuyu.feature.attendee.ticket.TicketContext
 import com.twilighty.yuyu.feature.attendee.ticket.TicketScreen
 import com.twilighty.yuyu.feature.attendee.ticket.TicketUiState
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -119,5 +120,37 @@ class AttendeeUiTest {
         compose.onNodeWithTag("ticket-torn").assertDoesNotExist()
         compose.onNodeWithText("You're in, Ada!").assertIsDisplayed()
         compose.onNodeWithText("Spring Hack Night").assertExists()
+    }
+
+    @Test
+    fun liveCheckInTearsTheStubAndCelebrates() {
+        var state by mutableStateOf(ticketState(null))
+        var animationDone = false
+        compose.setContent {
+            YuyuTheme(darkTheme = false) {
+                TicketScreen(
+                    token = "tkEXAMPLEownerTicketToken01",
+                    state = state,
+                    onBack = {},
+                    onOpenEvent = { _, _ -> },
+                    onAskCancel = {},
+                    onConfirmCancel = {},
+                    onDismissCancel = {},
+                    onAnimationDone = { animationDone = true },
+                    onMessageShown = {},
+                )
+            }
+        }
+        compose.onNodeWithTag("ticket-qr").assertExists()
+
+        state = state.copy(checkedIn = true, checkedInAt = "2030-05-10T17:04:00.000Z", justCheckedIn = true)
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("ticket-torn").assertExists()
+        compose.onNodeWithTag("ticket-qr").assertDoesNotExist()
+        compose.onNodeWithText("Checked in at 6:04 PM").assertIsDisplayed()
+        compose.onNodeWithText("You're checked in").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Cancel registration").assertDoesNotExist()
+        assertTrue(animationDone)
     }
 }

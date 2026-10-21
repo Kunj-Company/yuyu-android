@@ -6,7 +6,9 @@ import android.content.ContextWrapper
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.WindowManager
+import androidx.compose.animation.Animatable
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -81,6 +83,10 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuButtonVariant
 import com.twilighty.yuyu.core.designsystem.component.YuyuIconButton
 import com.twilighty.yuyu.core.designsystem.component.YuyuSnackbarHost
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
+import com.twilighty.yuyu.core.designsystem.motion.LocalReducedMotion
+import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
+import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
+import com.twilighty.yuyu.core.designsystem.motion.appearOnEnter
 import com.twilighty.yuyu.core.designsystem.theme.LightYuyuColors
 import com.twilighty.yuyu.core.designsystem.theme.YuyuElevation
 import com.twilighty.yuyu.core.designsystem.theme.YuyuMotion
@@ -90,10 +96,12 @@ import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.core.designsystem.theme.rememberReducedMotion
 import com.twilighty.yuyu.core.designsystem.util.openInBrowser
 import com.twilighty.yuyu.core.network.model.RsvpStatus
+import com.twilighty.yuyu.feature.attendee.common.AnimatedReveal
 import com.twilighty.yuyu.feature.attendee.common.addToCalendar
 import com.twilighty.yuyu.feature.attendee.common.isSafeHttpUrl
 import com.twilighty.yuyu.feature.attendee.common.rsvpStatusLabel
 import com.twilighty.yuyu.feature.attendee.common.shareText
+import com.twilighty.yuyu.feature.attendee.common.successPop
 
 @Composable
 internal fun TicketRoute(
@@ -162,10 +170,17 @@ internal fun TicketScreen(
             snackbarHost = { YuyuSnackbarHost(snackbar) },
             containerColor = YuyuTheme.colors.bgSubtle,
         ) { padding ->
-            if (state.loading) {
-                LoadingState(Modifier.padding(padding), label = "Opening your ticket")
-            } else {
-                TicketContent(token, state, onOpenEvent, onAskCancel, onAnimationDone, Modifier.padding(padding))
+            YuyuStateTransition(
+                targetState = state,
+                modifier = Modifier.padding(padding),
+                contentKey = { it.loading },
+                label = "ticket",
+            ) { shown ->
+                if (shown.loading) {
+                    LoadingState(label = "Opening your ticket")
+                } else {
+                    TicketContent(token, shown, onOpenEvent, onAskCancel, onAnimationDone, Modifier)
+                }
             }
         }
     }
@@ -204,11 +219,14 @@ private fun TicketContent(
     // The tear-away: the stub peels left from its top-right hinge and drops (DESIGN §4.11).
     val tear = remember { Animatable(0f) }
     var torn by remember { mutableStateOf(state.checkedIn && !state.justCheckedIn) }
+    // True once a live check-in happened on screen: the "checked in" panel then celebrates.
+    var celebrate by remember { mutableStateOf(false) }
     LaunchedEffect(state.checkedIn, state.justCheckedIn) {
         if (!state.checkedIn) return@LaunchedEffect
         if (state.justCheckedIn) {
             performCheckInHaptic(view)
             if (!reduced) tear.animateTo(1f, tween(900, easing = YuyuMotion.GravityEasing)) else tear.animateTo(1f, tween(YuyuMotion.PRESS))
+            celebrate = true
             torn = true
             onAnimationDone()
         } else {
@@ -226,26 +244,52 @@ private fun TicketContent(
     ) {
         Column(Modifier.widthIn(max = 420.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             // Heading + status.
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                when {
-                    state.checkedIn -> StatusChip("Checked in", StatusTone.Success)
-                    state.liveMode == LiveMode.Offline -> StatusChip("Offline", StatusTone.Neutral)
-                    state.liveMode == LiveMode.Streaming || state.liveMode == LiveMode.Polling -> StatusChip("Live", StatusTone.Neutral, icon = null)
-                }
-                if (ticketContext != null && !state.checkedIn) {
-                    val label = rsvpStatusLabel(ticketContext.status)
-                    StatusChip(label.text, label.tone)
+            // The chip and heading swap the moment the door scans the ticket, so they pop then.
+            val liveCheckIn = state.justCheckedIn || celebrate
+            // Status chips cross-fade when the live mode or check-in state changes.
+            val chip = when {
+                state.checkedIn -> LiveChip.CheckedIn
+                state.liveMode == LiveMode.Offline -> LiveChip.Offline
+                state.liveMode == LiveMode.Streaming || state.liveMode == LiveMode.Polling -> LiveChip.Live
+                else -> LiveChip.None
+            }
+            YuyuStateTransition(
+                targetState = chip to state,
+                contentKey = { (kind, s) -> kind to (s.context?.status.takeIf { !s.checkedIn }) },
+                label = "ticketChips",
+            ) { (shownChip, shown) ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    when (shownChip) {
+                        LiveChip.CheckedIn -> StatusChip("Checked in", StatusTone.Success, modifier = Modifier.successPop(enabled = liveCheckIn, from = 0.7f))
+                        LiveChip.Offline -> StatusChip("Offline", StatusTone.Neutral)
+                        LiveChip.Live -> StatusChip("Live", StatusTone.Neutral, icon = null)
+                        LiveChip.None -> Unit
+                    }
+                    val shownContext = shown.context
+                    if (shownContext != null && !shown.checkedIn) {
+                        val label = rsvpStatusLabel(shownContext.status)
+                        StatusChip(label.text, label.tone)
+                    }
                 }
             }
-            when {
-                state.checkedIn -> HeadingRow(DotFaceMood.Wink, checkedInHeading(state.checkedInAt, event?.timezone))
-                state.isConfirmed -> HeadingRow(DotFaceMood.Cheering, if (firstName != null) "You're in, $firstName!" else "You're in!")
-                ticketContext?.status == RsvpStatus.WAITLISTED -> HeadingRow(DotFaceMood.Waiting, "You're on the waitlist")
+            val heading = when {
+                state.checkedIn -> TicketHeading.CheckedIn
+                state.isConfirmed -> TicketHeading.Confirmed
+                ticketContext?.status == RsvpStatus.WAITLISTED -> TicketHeading.Waitlisted
+                else -> null
+            }
+            YuyuStateTransition(targetState = heading, label = "ticketHeading", contentKey = { it }) { shownHeading ->
+                when (shownHeading) {
+                    TicketHeading.CheckedIn -> HeadingRow(DotFaceMood.Wink, checkedInHeading(state.checkedInAt, event?.timezone), celebrate = liveCheckIn)
+                    TicketHeading.Confirmed -> HeadingRow(DotFaceMood.Cheering, if (firstName != null) "You're in, $firstName!" else "You're in!")
+                    TicketHeading.Waitlisted -> HeadingRow(DotFaceMood.Waiting, "You're on the waitlist")
+                    null -> Unit
+                }
             }
 
             val header: @Composable () -> Unit = { TicketHeader(state) }
             when {
-                torn -> TornTicket(header, state.checkedInAt, event?.timezone)
+                torn -> TornTicket(header, state.checkedInAt, event?.timezone, celebrate)
                 state.isConfirmed -> LiveTicketStub(token, header, tear.value, state.checkedIn)
                 else -> {
                     TornTicketMain(header, jagged = false)
@@ -257,7 +301,7 @@ private fun TicketContent(
                 }
             }
 
-            if (state.showQr) {
+            AnimatedReveal(state.showQr) {
                 Text(
                     "Show this at the door. It only holds a private ticket link.",
                     style = YuyuTheme.typography.caption,
@@ -269,8 +313,8 @@ private fun TicketContent(
 
             if (event != null) {
                 val start = EventTimeFormatter.parseInstant(event.startDateTime)
-                if (start != null && !state.checkedIn) {
-                    YuyuButton(
+                AnimatedReveal(start != null && !state.checkedIn) {
+                    if (start != null) YuyuButton(
                         "Add to calendar",
                         {
                             addToCalendar(
@@ -295,7 +339,7 @@ private fun TicketContent(
             } else if (state.shareUrl != null) {
                 YuyuButton("Open on the website", { openInBrowser(context, state.shareUrl) }, variant = YuyuButtonVariant.Secondary, fullWidth = true)
             }
-            if (state.canCancel) {
+            AnimatedReveal(state.canCancel) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                     Text("Can't make it?", style = YuyuTheme.typography.bodyUi, color = c.textSecondary)
                     YuyuButton("Cancel registration", onAskCancel, variant = YuyuButtonVariant.Quiet)
@@ -305,10 +349,14 @@ private fun TicketContent(
     }
 }
 
+private enum class LiveChip { CheckedIn, Offline, Live, None }
+
+private enum class TicketHeading { CheckedIn, Confirmed, Waitlisted }
+
 @Composable
-private fun HeadingRow(mood: DotFaceMood, text: String) {
+private fun HeadingRow(mood: DotFaceMood, text: String, celebrate: Boolean = false) {
     Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        DotFace(mood = mood, size = 64.dp, interactive = true)
+        DotFace(mood = mood, size = 64.dp, interactive = true, modifier = Modifier.successPop(enabled = celebrate, from = 0.5f))
         Text(
             text,
             style = YuyuTheme.typography.displayM,
@@ -438,22 +486,32 @@ private fun LiveTicketStub(token: String, header: @Composable () -> Unit, tear: 
 
 /** After check-in: the main part with a ripped edge, then the "You're checked in" panel. Never a QR. */
 @Composable
-private fun TornTicket(header: @Composable () -> Unit, checkedInAt: String?, timezone: String?) {
+private fun TornTicket(header: @Composable () -> Unit, checkedInAt: String?, timezone: String?, celebrate: Boolean = false) {
     val c = YuyuTheme.colors
+    val reduced = LocalReducedMotion.current
+    val play = celebrate && !reduced
+    // After a live check-in the panel washes from the canvas to the success tint
+    // while the check pops in; a ticket opened already checked in shows at rest.
+    val panel = remember { Animatable(if (play) c.bgCanvas else c.successBg) }
+    LaunchedEffect(c.successBg) { panel.animateTo(c.successBg, if (play) YuyuSpecs.standard(YuyuMotion.SUCCESS) else snap()) }
     Column(Modifier.fillMaxWidth().testTag("ticket-torn"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TornTicketMain(header, jagged = true)
         Column(
             Modifier
                 .fillMaxWidth()
+                .then(if (play) Modifier.appearOnEnter() else Modifier)
                 .clip(YuyuRadius.extraLarge)
-                .background(c.successBg)
+                .background(panel.value)
                 .border(1.5.dp, c.borderStrong, YuyuRadius.extraLarge)
                 .padding(24.dp)
                 .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Box(Modifier.size(64.dp).clip(CircleShape).background(c.successSolid), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.size(64.dp).successPop(enabled = play, from = 0.3f, delayMillis = 120).clip(CircleShape).background(c.successSolid),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(Icons.Outlined.Check, contentDescription = null, tint = c.bgCanvas, modifier = Modifier.size(36.dp))
             }
             Spacer(Modifier.height(4.dp))
