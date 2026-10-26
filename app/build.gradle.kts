@@ -16,6 +16,34 @@ val appLinkHost: String = providers.gradleProperty("yuyu.appLinkHost").getOrElse
 val yuyuVersionCode: Int = providers.gradleProperty("yuyu.versionCode").map(String::toInt).getOrElse(1)
 val yuyuVersionName: String = providers.gradleProperty("yuyu.versionName").getOrElse("0.1.0")
 
+/** Bundles the repo's CHANGELOG.md and CONTRIBUTORS.md as app assets for the About screen. */
+abstract class BundleAboutFiles : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val sources: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        out.mkdirs()
+        sources.files.forEach { it.copyTo(File(out, it.name), overwrite = true) }
+    }
+}
+
+val bundleAboutFiles = tasks.register<BundleAboutFiles>("bundleAboutFiles") {
+    sources.from(rootProject.file("CHANGELOG.md"), rootProject.file("CONTRIBUTORS.md"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(bundleAboutFiles, BundleAboutFiles::outputDir)
+    }
+}
+
 android {
     namespace = "com.twilighty.yuyu"
 

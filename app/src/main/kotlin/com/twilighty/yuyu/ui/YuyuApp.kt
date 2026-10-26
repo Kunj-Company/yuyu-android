@@ -55,6 +55,7 @@ import com.twilighty.yuyu.feature.attendee.navigation.navigateToDiscover
 import com.twilighty.yuyu.feature.attendee.navigation.navigateToEventDetail
 import com.twilighty.yuyu.feature.attendee.navigation.navigateToFeedback
 import com.twilighty.yuyu.feature.attendee.navigation.navigateToTicket
+import com.twilighty.yuyu.feature.auth.navigation.AboutRoute
 import com.twilighty.yuyu.feature.auth.navigation.AccountRoute
 import com.twilighty.yuyu.feature.auth.navigation.ServerSetupRoute
 import com.twilighty.yuyu.feature.auth.navigation.SignInRoute
@@ -222,6 +223,8 @@ private fun SignedInApp(state: AppUiState, viewModel: AppViewModel) {
             accountScreen(
                 onOpenDesignGallery = { navController.navigate(DesignGalleryRoute) },
                 onOpenStation = { navController.navigateToOpenStation() },
+                onOpenAbout = { navController.navigate(AboutRoute) },
+                onBack = navController::popBackStack,
             )
             if (BuildConfig.DEBUG) {
                 composable<DesignGalleryRoute> { DesignSystemGallery(onBack = navController::popBackStack) }

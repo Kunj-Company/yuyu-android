@@ -2,6 +2,7 @@ package com.twilighty.yuyu.feature.auth.navigation
 
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
+import com.twilighty.yuyu.feature.auth.about.AboutScreen
 import com.twilighty.yuyu.feature.auth.account.AccountScreen
 import com.twilighty.yuyu.feature.auth.server.ServerSetupScreen
 import com.twilighty.yuyu.feature.auth.signin.SignInScreen
@@ -28,7 +29,19 @@ fun NavGraphBuilder.signedOutGraph(onOpenStation: () -> Unit) {
     composable<SignInRoute> { SignInScreen(onOpenStation = onOpenStation) }
 }
 
+/** About Yuyu: version, contributors and changelog (from Account). */
+@Serializable
+data object AboutRoute
+
 /** The Account tab. [onOpenDesignGallery] is only reachable in debug builds. */
-fun NavGraphBuilder.accountScreen(onOpenDesignGallery: () -> Unit, onOpenStation: () -> Unit) {
-    composable<AccountRoute> { AccountScreen(onOpenDesignGallery = onOpenDesignGallery, onOpenStation = onOpenStation) }
+fun NavGraphBuilder.accountScreen(
+    onOpenDesignGallery: () -> Unit,
+    onOpenStation: () -> Unit,
+    onOpenAbout: () -> Unit,
+    onBack: () -> Unit,
+) {
+    composable<AccountRoute> {
+        AccountScreen(onOpenDesignGallery = onOpenDesignGallery, onOpenStation = onOpenStation, onOpenAbout = onOpenAbout)
+    }
+    composable<AboutRoute> { AboutScreen(onBack = onBack) }
 }

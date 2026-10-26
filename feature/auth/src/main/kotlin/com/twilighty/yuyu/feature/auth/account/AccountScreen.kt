@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Shield
@@ -67,6 +68,7 @@ private val AppearanceOptions = listOf(AppearanceMode.Light, AppearanceMode.Dark
 fun AccountScreen(
     onOpenDesignGallery: () -> Unit,
     onOpenStation: () -> Unit,
+    onOpenAbout: () -> Unit,
     viewModel: AccountViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -193,12 +195,16 @@ fun AccountScreen(
                 YuyuButton("Sign out everywhere…", { viewModel.askSignOutEverywhere(true) }, variant = YuyuButtonVariant.Danger)
             }
 
-            Text(
-                "Yuyu for Android ${state.versionName}",
-                style = t.caption,
-                color = c.textMuted,
-                modifier = Modifier.section("version", 6).fillMaxWidth().padding(bottom = 16.dp),
-            )
+            YuyuCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), modifier = Modifier.section("about", 6)) {
+                ListRow(
+                    title = "About Yuyu",
+                    supporting = "What's new, who builds it, version ${state.versionName}",
+                    leadingIcon = Icons.Outlined.Info,
+                    showChevron = true,
+                    onClick = onOpenAbout,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
         }
     }
 
