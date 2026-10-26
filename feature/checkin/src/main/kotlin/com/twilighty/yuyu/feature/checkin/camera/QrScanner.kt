@@ -110,8 +110,13 @@ internal fun QrScanner(
         onPauseOrDispose { }
     }
 
-    if (granted) {
-        CameraPreview(paused = paused, onCode = onCode, hint = hint, modifier = modifier)
+    // Set when the camera or the QR reader can't start on this phone: offer typing or search instead of crashing.
+    var unavailable by rememberSaveable { mutableStateOf(false) }
+
+    if (granted && unavailable) {
+        CameraUnavailableCard(modifier)
+    } else if (granted) {
+        CameraPreview(paused = paused, onCode = onCode, hint = hint, onUnavailable = { unavailable = true }, modifier = modifier)
     } else {
         // Asked before and the system will no longer show the dialog: only settings can help.
         val permanentlyDenied = asked && !showRationale
@@ -160,16 +165,43 @@ private fun CameraPermissionCard(
 }
 
 @Composable
-private fun CameraPreview(paused: Boolean, onCode: (String) -> Unit, hint: String, modifier: Modifier) {
+private fun CameraUnavailableCard(modifier: Modifier) {
+    val c = YuyuTheme.colors
+    YuyuCard(modifier = modifier.fillMaxWidth(), tone = YuyuCardTone.Subtle) {
+        Column(
+            Modifier.fillMaxWidth().padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(Icons.Outlined.NoPhotography, contentDescription = null, tint = c.textSecondary)
+            Text("Camera scanning isn't available", style = YuyuTheme.typography.h4, color = c.text)
+            Text(
+                "The camera or the QR reader couldn't start on this phone. Type the ticket code or search by name instead.",
+                style = YuyuTheme.typography.bodyUi,
+                color = c.textSecondary,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CameraPreview(
+    paused: Boolean,
+    onCode: (String) -> Unit,
+    hint: String,
+    onUnavailable: () -> Unit,
+    modifier: Modifier,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentOnCode by rememberUpdatedState(onCode)
     val currentPaused by rememberUpdatedState(paused)
+    val currentOnUnavailable by rememberUpdatedState(onUnavailable)
     var torchOn by remember { mutableStateOf(false) }
     var hasTorch by remember { mutableStateOf(false) }
     val controller = remember {
         LifecycleCameraController(context).apply {
-            cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
             setEnabledUseCases(CameraController.IMAGE_ANALYSIS)
             imageAnalysisBackpressureStrategy = ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
         }
@@ -177,26 +209,48 @@ private fun CameraPreview(paused: Boolean, onCode: (String) -> Unit, hint: Strin
 
     DisposableEffect(lifecycleOwner, controller) {
         val analysisExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "yuyu-qr-analyzer") }
-        // Late ML Kit callbacks after dispose are dropped instead of throwing.
+        // Late frames and ML Kit callbacks after dispose are dropped instead of throwing.
         val safeExecutor = Executor { task -> runCatching { analysisExecutor.execute(task) } }
         val main = ContextCompat.getMainExecutor(context)
-        val analyzer = QrCodeAnalyzer(safeExecutor, isPaused = { currentPaused }) { code ->
-            main.execute { if (!currentPaused) currentOnCode(code) }
+        var disposed = false
+        // Creating the ML Kit client can throw on a broken install; it must never take the app down.
+        val analyzer = runCatching {
+            QrCodeAnalyzer(safeExecutor, isPaused = { currentPaused }) { code ->
+                main.execute { if (!currentPaused) currentOnCode(code) }
+            }
+        }.getOrNull()
+        if (analyzer == null) {
+            currentOnUnavailable()
+        } else {
+            controller.setImageAnalysisAnalyzer(safeExecutor, analyzer)
+            // Bind only once CameraX is ready and a camera exists: binding without one throws on the main thread.
+            controller.initializationFuture.addListener({
+                if (disposed) return@addListener
+                val bound = runCatching {
+                    controller.initializationFuture.get()
+                    controller.cameraSelector = when {
+                        controller.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
+                        controller.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
+                        else -> error("No camera")
+                    }
+                    controller.bindToLifecycle(lifecycleOwner)
+                    hasTorch = controller.cameraInfo?.hasFlashUnit() == true
+                }
+                if (bound.isFailure) currentOnUnavailable()
+            }, main)
         }
-        controller.setImageAnalysisAnalyzer(analysisExecutor, analyzer)
-        controller.bindToLifecycle(lifecycleOwner)
-        controller.initializationFuture.addListener({
-            hasTorch = controller.cameraInfo?.hasFlashUnit() == true
-        }, main)
         onDispose {
-            controller.clearImageAnalysisAnalyzer()
-            controller.unbind()
-            analyzer.close()
+            disposed = true
+            runCatching {
+                controller.clearImageAnalysisAnalyzer()
+                controller.unbind()
+            }
+            analyzer?.close()
             analysisExecutor.shutdown()
         }
     }
     LaunchedEffect(torchOn, hasTorch) {
-        if (hasTorch) controller.enableTorch(torchOn)
+        if (hasTorch) runCatching { controller.enableTorch(torchOn) }
     }
 
     Box(

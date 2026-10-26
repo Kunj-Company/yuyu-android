@@ -25,7 +25,7 @@ class ServerStore @Inject constructor(
     val server: StateFlow<HttpUrl?> = state.asStateFlow()
 
     suspend fun load(): HttpUrl? {
-        state.value = dataStore.data.first()[KEY_SERVER]?.toHttpUrlOrNull()
+        state.value = runCatching { dataStore.data.first()[KEY_SERVER] }.getOrNull()?.toHttpUrlOrNull()
         return state.value
     }
 

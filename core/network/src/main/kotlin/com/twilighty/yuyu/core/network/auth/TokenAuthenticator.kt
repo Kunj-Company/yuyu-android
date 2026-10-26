@@ -32,7 +32,17 @@ class TokenAuthenticator @Inject constructor(
         if (priorResponseCount(response) >= 2) return null
         val sentToken = sentHeader.removePrefix("Bearer ")
 
-        return runBlocking {
+        // OkHttp rethrows an authenticator's exception on its dispatcher thread, which kills
+        // the app: any unexpected failure here just lets the original 401 surface instead.
+        return try {
+            refreshAndRetry(request, sentToken)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun refreshAndRetry(request: Request, sentToken: String): Request? =
+        runBlocking {
             mutex.withLock {
                 // Another request already refreshed while we waited: just retry.
                 val current = tokenStore.accessToken()
@@ -64,7 +74,6 @@ class TokenAuthenticator @Inject constructor(
                 }
             }
         }
-    }
 
     /** Routes where a bearer is optional (it only identifies the attendee). */
     private fun isPublicRoute(request: Request): Boolean {

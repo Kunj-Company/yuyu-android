@@ -2,7 +2,9 @@ package com.twilighty.yuyu.core.data.di
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.work.WorkManager
@@ -58,13 +60,18 @@ object DataStoreModule {
     @Singleton
     @SessionPrefs
     fun providesSessionPrefs(@ApplicationContext context: Context): DataStore<Preferences> =
-        PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("yuyu_session") }
+        // A corrupt file is replaced with an empty one (signed out / no server) instead of crashing.
+        PreferenceDataStoreFactory.create(corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() }) {
+            context.preferencesDataStoreFile("yuyu_session")
+        }
 
     @Provides
     @Singleton
     @SettingsPrefs
     fun providesSettingsPrefs(@ApplicationContext context: Context): DataStore<Preferences> =
-        PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("yuyu_settings") }
+        PreferenceDataStoreFactory.create(corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() }) {
+            context.preferencesDataStoreFile("yuyu_settings")
+        }
 
     @Provides
     fun providesWorkManager(@ApplicationContext context: Context): WorkManager = WorkManager.getInstance(context)

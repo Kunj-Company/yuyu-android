@@ -104,7 +104,8 @@ class MeRepositoryImpl @Inject constructor(
         checkedInAt = checkedInAt,
         registeredAt = registeredAt,
         canCancel = canCancel,
-        encryptedTicketToken = ticketToken?.let { cipher.encryptToBase64(it) },
+        // If the Keystore fails the ticket is cached without its QR (it shows online) rather than crashing.
+        encryptedTicketToken = ticketToken?.let { runCatching { cipher.encryptToBase64(it) }.getOrNull() },
         isUpcoming = isUpcoming,
         eventId = event.id,
         eventSlug = event.slug,
