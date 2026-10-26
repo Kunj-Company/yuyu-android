@@ -51,7 +51,6 @@ import com.twilighty.yuyu.core.designsystem.component.ConfirmDialog
 import com.twilighty.yuyu.core.designsystem.component.DialogActions
 import com.twilighty.yuyu.core.designsystem.component.EmptyState
 import com.twilighty.yuyu.core.designsystem.component.ErrorState
-import com.twilighty.yuyu.core.designsystem.component.ListRow
 import com.twilighty.yuyu.core.designsystem.component.LoadingState
 import com.twilighty.yuyu.core.designsystem.component.SectionHeader
 import com.twilighty.yuyu.core.designsystem.component.StatusTone
@@ -72,6 +71,9 @@ import com.twilighty.yuyu.core.designsystem.motion.appearOnEnter
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.feature.organiser.common.AnimatedStatusChip
 import com.twilighty.yuyu.feature.organiser.common.RevealVisibility
+import com.twilighty.yuyu.feature.organiser.schedule.SessionRow
+import com.twilighty.yuyu.feature.organiser.schedule.TrackUi
+import com.twilighty.yuyu.feature.organiser.schedule.rememberNow
 import com.twilighty.yuyu.core.network.model.RegistrationStateDto
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
@@ -246,35 +248,18 @@ private fun DayOfUiState.schedulePhase(): SchedulePhase = when {
 
 @Composable
 private fun TrackCard(track: TrackUi, tz: String, onSessionClick: (String) -> Unit) {
+    val now = rememberNow()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SectionHeader(track.name)
         // Live times grow or shrink smoothly when a delay changes.
         YuyuCard(Modifier.animateContentSize(YuyuSpecs.standard()), contentPadding = PaddingValues(0.dp)) {
             track.sessions.forEachIndexed { index, item ->
-                val s = item.session
-                val start = EventTimeFormatter.parseInstant(s.startDateTime)
-                val end = EventTimeFormatter.parseInstant(s.endDateTime)
-                val planned = start?.let { "Planned " + EventTimeFormatter.timeRange(it, end, tz) }
-                val live = if (item.shiftMinutes > 0 && start != null) {
-                    val shift = item.shiftMinutes * 60L
-                    "Live " + EventTimeFormatter.timeRange(start.plusSeconds(shift), end?.plusSeconds(shift), tz) +
-                        " (${item.shiftMinutes} min behind)"
-                } else {
-                    null
-                }
-                ListRow(
-                    title = s.title,
-                    supporting = listOfNotNull(planned, live).joinToString("\n"),
-                    trailing = {
-                        // The delay chip pops in when a delay is set and cross-fades as it changes.
-                        RevealVisibility(s.delayMinutes > 0) {
-                            val last = remember { intArrayOf(0) }
-                            if (s.delayMinutes > 0) last[0] = s.delayMinutes
-                            AnimatedStatusChip("+${last[0]} min", StatusTone.Warning)
-                        }
-                    },
-                    showChevron = true,
-                    onClick = { onSessionClick(s.id) },
+                SessionRow(
+                    item = item,
+                    timezone = tz,
+                    now = now,
+                    onClick = { onSessionClick(item.session.id) },
+                    onClickLabel = "Set a delay",
                     divider = index < track.sessions.lastIndex,
                 )
             }

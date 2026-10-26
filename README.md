@@ -4,7 +4,9 @@ The native Android app for [Yuyu](https://github.com/twilighty-abhi/yuyu), the
 free, self-hosted platform for community events. It covers the phone-first
 jobs: signing in to your community's Yuyu server, your registrations and live
 tickets (offline too), and organiser day-of work: check-in at the door, guests,
-emails, live programme delays and closing sign-ups.
+emails, the programme with speakers and live countdowns (saved for offline
+use, for everyone on the organising team), live programme delays and closing
+sign-ups.
 
 The app talks to the Yuyu mobile API (`/api/mobile/v1`). The contract lives in
 [`docs/MOBILE_API.md`](docs/MOBILE_API.md) and

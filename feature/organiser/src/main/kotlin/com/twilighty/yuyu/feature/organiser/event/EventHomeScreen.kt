@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Groups
@@ -85,6 +86,7 @@ fun EventHomeScreen(
     onOpenGuests: () -> Unit,
     onOpenEmails: () -> Unit,
     onOpenDayOf: () -> Unit,
+    onOpenSchedule: () -> Unit,
     viewModel: EventHomeViewModel = hiltViewModel(),
 ) {
     LaunchedEffect(orgSlug, eventId) { viewModel.start(orgSlug, eventId) }
@@ -112,7 +114,20 @@ fun EventHomeScreen(
             Column(Modifier.fillMaxSize()) {
                 when {
                     shown.loading -> LoadingState(label = "Loading event")
-                    detail == null -> ErrorState(shown.error ?: "We couldn't load this event.", onRetry = viewModel::retry)
+                    detail == null -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        ErrorState(shown.error ?: "We couldn't load this event.", onRetry = viewModel::retry, modifier = Modifier.weight(1f))
+                        // Offline at the venue: the programme saved earlier still opens.
+                        if (shown.hasSavedSchedule) {
+                            YuyuButton(
+                                "Open saved schedule",
+                                onOpenSchedule,
+                                modifier = Modifier.padding(16.dp),
+                                variant = YuyuButtonVariant.Secondary,
+                                leadingIcon = Icons.Outlined.CalendarMonth,
+                                fullWidth = true,
+                            )
+                        }
+                    }
                     else -> PullToRefreshBox(isRefreshing = shown.refreshing, onRefresh = viewModel::refresh, modifier = Modifier.fillMaxSize()) {
                         EventHomeContent(
                             detail = detail,
@@ -122,6 +137,7 @@ fun EventHomeScreen(
                             onOpenGuests = onOpenGuests,
                             onOpenEmails = onOpenEmails,
                             onOpenDayOf = onOpenDayOf,
+                            onOpenSchedule = onOpenSchedule,
                             onOpenWeb = { viewModel.dashboardUrl()?.let { openInBrowser(context, it) } },
                         )
                     }
@@ -148,6 +164,7 @@ private fun EventHomeContent(
     onOpenGuests: () -> Unit,
     onOpenEmails: () -> Unit,
     onOpenDayOf: () -> Unit,
+    onOpenSchedule: () -> Unit,
     onOpenWeb: () -> Unit,
 ) {
     val event = detail.event
@@ -221,6 +238,7 @@ private fun EventHomeContent(
                     add(ActionTileSpec("Guests", "Search, approve and manage", Icons.Outlined.Groups, pending.takeIf { it > 0 }, onOpenGuests))
                 }
                 if (actions.emails) add(ActionTileSpec("Email guests", "Send an update to your guests", Icons.Outlined.MailOutline, null, onOpenEmails))
+                if (actions.schedule) add(ActionTileSpec("Schedule", "Sessions, speakers and time left, offline too", Icons.Outlined.CalendarMonth, null, onOpenSchedule))
                 if (actions.dayOf) add(ActionTileSpec("Day-of controls", "Running late, feedback, sign-ups", Icons.Outlined.Tune, null, onOpenDayOf))
             }
             if (tiles.isNotEmpty()) {

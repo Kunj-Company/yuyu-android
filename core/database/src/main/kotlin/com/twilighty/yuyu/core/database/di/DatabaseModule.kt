@@ -3,6 +3,7 @@ package com.twilighty.yuyu.core.database.di
 import android.content.Context
 import androidx.room.Room
 import com.twilighty.yuyu.core.database.YuyuDatabase
+import com.twilighty.yuyu.core.database.dao.CachedScheduleDao
 import com.twilighty.yuyu.core.database.dao.CachedTicketDao
 import com.twilighty.yuyu.core.database.dao.PendingCheckInDao
 import com.twilighty.yuyu.core.database.dao.RosterDao
@@ -29,4 +30,7 @@ object DatabaseModule {
 
     @Provides
     fun providesPendingCheckInDao(db: YuyuDatabase): PendingCheckInDao = db.pendingCheckInDao()
+
+    @Provides
+    fun providesCachedScheduleDao(db: YuyuDatabase): CachedScheduleDao = db.cachedScheduleDao()
 }

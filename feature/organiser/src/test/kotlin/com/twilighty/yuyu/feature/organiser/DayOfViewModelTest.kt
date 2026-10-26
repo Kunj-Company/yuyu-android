@@ -11,7 +11,7 @@ import com.twilighty.yuyu.feature.organiser.dayof.DayOfViewModel
 import com.twilighty.yuyu.feature.organiser.dayof.DelayInput
 import com.twilighty.yuyu.feature.organiser.dayof.REOPEN_CONFLICT_MESSAGE
 import com.twilighty.yuyu.feature.organiser.dayof.parseDelay
-import com.twilighty.yuyu.feature.organiser.dayof.toTrackUi
+import com.twilighty.yuyu.feature.organiser.schedule.toTrackUi
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
