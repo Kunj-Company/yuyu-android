@@ -139,7 +139,8 @@ private fun ScheduleContent(state: ScheduleUiState, onOpenDayOf: () -> Unit) {
         }
         if (summary.now.isNotEmpty()) {
             item(key = "now-header") { SectionHeader("Happening now") }
-            items(summary.now, key = { "now-" + it.item.session.id }) { NowCard(it, tz, now) }
+            // Keys include the track: a lazy list crashes on a repeated key.
+            items(summary.now, key = { "now-" + it.trackName + "-" + it.item.session.id }) { NowCard(it, tz, now) }
         }
         if (summary.next.isNotEmpty()) {
             item(key = "next") {
@@ -161,8 +162,8 @@ private fun ScheduleContent(state: ScheduleUiState, onOpenDayOf: () -> Unit) {
                 }
             }
         }
-        state.tracks.filter { it.sessions.isNotEmpty() }.forEach { track ->
-            item(key = "track-" + (track.id ?: track.name)) { TrackSection(track, tz, now) }
+        state.tracks.filter { it.sessions.isNotEmpty() }.forEachIndexed { index, track ->
+            item(key = "track-$index-${track.id ?: track.name}") { TrackSection(track, tz, now) }
         }
         item(key = "end") { Spacer(Modifier.height(16.dp)) }
     }

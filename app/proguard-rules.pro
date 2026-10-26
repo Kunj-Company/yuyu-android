@@ -18,6 +18,13 @@
     *** Companion;
 }
 
+# ML Kit (barcode scanning) builds its components from registrar classes named in
+# the manifest and creates them by reflection. The library rule keeps the classes
+# but, under R8 full mode, not their no-arg constructors, so ML Kit never
+# registered and BarcodeScanning.getClient() threw a NullPointerException the
+# moment the check-in camera opened.
+-keep class * implements com.google.firebase.components.ComponentRegistrar { <init>(); }
+
 # Google Identity (Credential Manager custom credential types).
 -keep class com.google.android.libraries.identity.googleid.** { *; }
 -dontwarn com.google.android.libraries.identity.googleid.**

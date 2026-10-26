@@ -3,6 +3,7 @@ package com.twilighty.yuyu.core.data
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.twilighty.yuyu.core.data.crypto.AesGcmSecretCipher
+import com.twilighty.yuyu.core.data.crypto.SecretCipher
 import com.twilighty.yuyu.core.data.crypto.decryptFromBase64
 import com.twilighty.yuyu.core.data.crypto.encryptToBase64
 import com.twilighty.yuyu.core.data.session.SessionStore
@@ -96,6 +97,30 @@ class SessionStoreTest {
         SessionStore(dataStore, cipher).save(session)
         val otherKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
         assertNull(SessionStore(dataStore, AesGcmSecretCipher { otherKey }).load())
+        scope.cancel()
+    }
+
+    @Test
+    fun keystoreFailureKeepsTheSessionInMemoryInsteadOfCrashing() = runTest {
+        val file = File(tmp.root, "keystore-broken.preferences_pb")
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        val broken = object : SecretCipher {
+            override fun encrypt(plaintext: ByteArray): ByteArray = throw java.security.ProviderException("Keystore unavailable")
+            override fun decrypt(ciphertext: ByteArray): ByteArray = throw java.security.ProviderException("Keystore unavailable")
+        }
+        val store = SessionStore(PreferenceDataStoreFactory.create(scope = scope) { file }, broken)
+        // A token refresh saves the new session; a failing Keystore must not throw out of it.
+        store.onRefreshed(
+            com.twilighty.yuyu.core.network.model.SessionDto(
+                accessToken = "yma_new",
+                accessTokenExpiresAt = "2030-01-01T00:15:00Z",
+                refreshToken = "ymr_new",
+                refreshTokenExpiresAt = "2030-03-01T00:00:00Z",
+                user = session.user,
+            ),
+        )
+        assertEquals("yma_new", store.accessToken())
+        assertEquals("yma_new", store.load()?.accessToken)
         scope.cancel()
     }
 }

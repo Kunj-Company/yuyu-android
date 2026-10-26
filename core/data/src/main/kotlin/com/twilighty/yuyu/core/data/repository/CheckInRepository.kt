@@ -31,6 +31,7 @@ import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.builtins.ListSerializer
@@ -111,15 +112,15 @@ class CheckInRepositoryImpl @Inject constructor(
 
     override suspend fun checkInByCode(orgSlug: String, eventId: String, rawInput: String, force: Boolean) =
         apiCall { api.checkIn(orgSlug, eventId, CheckInRequest(rawInput = rawInput.trim(), force = force)) }
-            .onSuccess { rosterDao.markCheckedIn(eventId, it.rsvpId, it.checkedInAt) }
+            .onSuccess { result -> markLocally(eventId, result.rsvpId, result.checkedInAt) }
 
     override suspend fun checkInByRsvp(orgSlug: String, eventId: String, rsvpId: String, force: Boolean) =
         apiCall { api.checkIn(orgSlug, eventId, CheckInRequest(rsvpId = rsvpId, force = force)) }
-            .onSuccess { rosterDao.markCheckedIn(eventId, it.rsvpId, it.checkedInAt) }
+            .onSuccess { result -> markLocally(eventId, result.rsvpId, result.checkedInAt) }
 
     override suspend fun undo(orgSlug: String, eventId: String, rsvpId: String) =
         apiCallUnit { api.undoCheckIn(orgSlug, eventId, RsvpIdRequest(rsvpId)) }
-            .onSuccess { rosterDao.markCheckedIn(eventId, rsvpId, null) }
+            .onSuccess { markLocally(eventId, rsvpId, null) }
 
     override suspend fun lookup(orgSlug: String, eventId: String, query: String): AppResult<List<GuestDto>> {
         val q = query.trim()
@@ -129,7 +130,20 @@ class CheckInRepositoryImpl @Inject constructor(
 
     override suspend fun stats(orgSlug: String, eventId: String) = apiCall { api.checkInStats(orgSlug, eventId) }
 
-    override suspend fun downloadRoster(orgSlug: String, eventId: String): AppResult<RosterInfo> =
+    /** The offline copy mirrors server check-ins; a local database error must not fail the check-in itself. */
+    private suspend fun markLocally(eventId: String, rsvpId: String, checkedInAt: String?) {
+        runCatching { rosterDao.markCheckedIn(eventId, rsvpId, checkedInAt) }
+    }
+
+    override suspend fun downloadRoster(orgSlug: String, eventId: String): AppResult<RosterInfo> = try {
+        saveRoster(orgSlug, eventId)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        AppResult.Failure(AppError.Unknown("Couldn't save the guest list on this phone. Check the free space and try again."))
+    }
+
+    private suspend fun saveRoster(orgSlug: String, eventId: String): AppResult<RosterInfo> =
         apiCall { api.checkInRoster(orgSlug, eventId) }.map { roster ->
             val rows = roster.rows.map { row ->
                 RosterRowEntity(
@@ -154,7 +168,8 @@ class CheckInRepositoryImpl @Inject constructor(
             RosterInfo(roster.generatedAt, rows.size)
         }
 
-    override suspend fun rosterInfo(eventId: String) = RosterInfo(rosterDao.generatedAt(eventId), rosterDao.count(eventId))
+    override suspend fun rosterInfo(eventId: String) =
+        runCatching { RosterInfo(rosterDao.generatedAt(eventId), rosterDao.count(eventId)) }.getOrElse { RosterInfo(null, 0) }
 
     override fun observeRoster(eventId: String): Flow<List<OfflineGuest>> =
         rosterDao.observeRoster(eventId).map { rows -> rows.map { it.toOffline() } }

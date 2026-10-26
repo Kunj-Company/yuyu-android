@@ -199,7 +199,7 @@ class GuestsViewModel @Inject constructor(
                     is AppResult.Success -> it.copy(
                         loading = false,
                         refreshing = false,
-                        guests = result.data.guests,
+                        guests = result.data.guests.distinctBy { g -> g.rsvpId },
                         nextCursor = result.data.nextCursor,
                         error = null,
                     )

@@ -2,7 +2,9 @@ package com.twilighty.yuyu.core.data.crypto
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import java.security.GeneralSecurityException
 import java.security.KeyStore
+import java.security.ProviderException
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -81,6 +83,18 @@ class AndroidKeystoreKeyProvider(private val alias: String = KEY_ALIAS) : () -> 
         return key
     }
 
+    /**
+     * Forgets and deletes the key so the next call creates a new one. Used when
+     * the Keystore reports the key unusable (some devices invalidate it after an
+     * OS update or a restore); anything sealed with the old key becomes
+     * unreadable, which callers already treat as "not saved".
+     */
+    @Synchronized
+    fun reset() {
+        cached = null
+        runCatching { KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }.deleteEntry(alias) }
+    }
+
     companion object {
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val KEY_ALIAS = "yuyu_secrets_v1"
@@ -88,4 +102,19 @@ class AndroidKeystoreKeyProvider(private val alias: String = KEY_ALIAS) : () -> 
 }
 
 @Singleton
-class KeystoreSecretCipher @Inject constructor() : AesGcmSecretCipher(AndroidKeystoreKeyProvider())
+class KeystoreSecretCipher private constructor(
+    private val keys: AndroidKeystoreKeyProvider,
+) : AesGcmSecretCipher(keys) {
+    @Inject constructor() : this(AndroidKeystoreKeyProvider())
+
+    /** Retries once with a fresh key when the Keystore key has become unusable. */
+    override fun encrypt(plaintext: ByteArray): ByteArray = try {
+        super.encrypt(plaintext)
+    } catch (e: GeneralSecurityException) {
+        keys.reset()
+        super.encrypt(plaintext)
+    } catch (e: ProviderException) {
+        keys.reset()
+        super.encrypt(plaintext)
+    }
+}

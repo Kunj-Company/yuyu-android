@@ -76,7 +76,7 @@ class DiscoverViewModel @Inject constructor(
             val result = if (query.isBlank()) repository.discover(limit = PAGE_SIZE) else repository.search(query)
             when (result) {
                 is AppResult.Success -> state.update {
-                    it.copy(loading = false, events = result.data.events, nextCursor = result.data.nextCursor, offline = false)
+                    it.copy(loading = false, events = result.data.events.distinctBy { e -> e.id }, nextCursor = result.data.nextCursor, offline = false)
                 }
                 is AppResult.Failure -> state.update {
                     it.copy(loading = false, events = emptyList(), nextCursor = null, error = result.error.message, offline = result.error is AppError.Network)

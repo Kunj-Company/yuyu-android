@@ -164,7 +164,7 @@ class OrganiserHomeViewModel @Inject constructor(
             if (state.value.selectedOrg?.slug != org.slug || state.value.filter != filter) return@launch
             state.update {
                 when (result) {
-                    is AppResult.Success -> it.copy(events = result.data.events, loadingEvents = false, error = null)
+                    is AppResult.Success -> it.copy(events = result.data.events.distinctBy { e -> e.id }, loadingEvents = false, error = null)
                     is AppResult.Failure -> it.copy(loadingEvents = false, error = result.error.message)
                 }
             }

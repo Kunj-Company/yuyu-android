@@ -74,7 +74,8 @@ class SessionStore @Inject constructor(
     /** Reads the encrypted session from disk once. Call before the first API request. */
     suspend fun load(): StoredSession? = loadMutex.withLock {
         if (!loaded) {
-            val encoded = dataStore.data.first()[KEY_SESSION]
+            // An unreadable store means "signed out", never a crash at launch.
+            val encoded = runCatching { dataStore.data.first()[KEY_SESSION] }.getOrNull()
             state.value = encoded
                 ?.let { cipher.decryptFromBase64(it) }
                 ?.let { runCatching { NetworkJson.decodeFromString(StoredSession.serializer(), it) }.getOrNull() }
@@ -83,11 +84,18 @@ class SessionStore @Inject constructor(
         state.value
     }
 
+    /**
+     * Keeps [session] in memory, then persists it. If the Keystore or disk fails
+     * the session still works until the app closes (the user signs in again
+     * next time) instead of crashing, e.g. inside a token refresh.
+     */
     suspend fun save(session: StoredSession) {
-        val encrypted = cipher.encryptToBase64(NetworkJson.encodeToString(StoredSession.serializer(), session))
-        dataStore.edit { it[KEY_SESSION] = encrypted }
         state.value = session
         loaded = true
+        runCatching {
+            val encrypted = cipher.encryptToBase64(NetworkJson.encodeToString(StoredSession.serializer(), session))
+            dataStore.edit { it[KEY_SESSION] = encrypted }
+        }
     }
 
     suspend fun updateUser(user: UserDto) {
@@ -95,7 +103,7 @@ class SessionStore @Inject constructor(
     }
 
     suspend fun clear() {
-        dataStore.edit { it.remove(KEY_SESSION) }
+        runCatching { dataStore.edit { it.remove(KEY_SESSION) } }
         state.value = null
         loaded = true
     }

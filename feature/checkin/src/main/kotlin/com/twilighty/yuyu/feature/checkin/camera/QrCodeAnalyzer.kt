@@ -36,13 +36,19 @@ internal class QrCodeAnalyzer(
             image.close()
             return
         }
-        val input = InputImage.fromMediaImage(media, image.imageInfo.rotationDegrees)
-        scanner.process(input)
-            .addOnSuccessListener(callbackExecutor) { barcodes ->
-                val value = barcodes.firstNotNullOfOrNull { code -> code.rawValue?.takeIf { it.isNotBlank() } }
-                if (value != null && !closed.get() && !isPaused()) onCode(value)
-            }
-            .addOnCompleteListener(callbackExecutor) { image.close() }
+        // This runs on the camera's analysis thread, where an uncaught exception kills the
+        // app: a frame the reader can't take (or a reader closed mid-frame) is just skipped.
+        try {
+            val input = InputImage.fromMediaImage(media, image.imageInfo.rotationDegrees)
+            scanner.process(input)
+                .addOnSuccessListener(callbackExecutor) { barcodes ->
+                    val value = barcodes.firstNotNullOfOrNull { code -> code.rawValue?.takeIf { it.isNotBlank() } }
+                    if (value != null && !closed.get() && !isPaused()) onCode(value)
+                }
+                .addOnCompleteListener(callbackExecutor) { image.close() }
+        } catch (e: Exception) {
+            image.close()
+        }
     }
 
     override fun close() {
