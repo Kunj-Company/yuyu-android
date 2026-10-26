@@ -19,6 +19,7 @@ class ApiErrorParserTest {
         assertTrue(ApiErrorParser.parse(404, envelope("NOT_FOUND")) is AppError.NotFound)
         assertTrue(ApiErrorParser.parse(409, envelope("CONFLICT")) is AppError.Conflict)
         assertTrue(ApiErrorParser.parse(409, envelope("NEEDS_FORCE")) is AppError.NeedsForce)
+        assertTrue(ApiErrorParser.parse(409, envelope("TEAM_REQUIRED")) is AppError.TeamRequired)
         assertTrue(ApiErrorParser.parse(500, envelope("INTERNAL_ERROR")) is AppError.Server)
         assertTrue(ApiErrorParser.parse(400, envelope("INVALID_REQUEST")) is AppError.InvalidRequest)
     }

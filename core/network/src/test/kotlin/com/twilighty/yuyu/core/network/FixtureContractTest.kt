@@ -115,6 +115,15 @@ class FixtureContractTest {
     }
 
     @Test
+    fun organiserCountsCarryCapacityUsed() {
+        val detail = strict.decodeFromString(ApiEnvelope.serializer(OrgEventDetailResponseDto.serializer()), read("org-event-detail.json")).data!!
+        assertEquals(42, detail.counts?.capacityUsed)
+        assertEquals(42, detail.counts?.placesTaken)
+        val events = strict.decodeFromString(ApiEnvelope.serializer(OrgEventsDto.serializer()), read("org-events.json")).data!!
+        assertEquals(42, events.events.first().counts?.capacityUsed)
+    }
+
+    @Test
     fun checkInPreviewGateNeedsForce() {
         val preview = strict.decodeFromString(ApiEnvelope.serializer(CheckInPreviewDto.serializer()), read("check-in-preview.json")).data!!
         assertFalse(preview.gate.ok)

@@ -33,7 +33,8 @@ limits, emails and audit behaviour are identical.
   sign-in only), `FORBIDDEN` (403), `NOT_FOUND` (404; also every id outside
   what the caller can see, including other organisations'), `CONFLICT` (409),
   `NEEDS_FORCE` (409, check-in status override available), `RATE_LIMITED`
-  (429, with `Retry-After`), `INTERNAL_ERROR` (500).
+  (429, with `Retry-After`), `TEAM_REQUIRED` (409, `POST /rsvp` on an event
+  that registers teams only), `INTERNAL_ERROR` (500).
 - Error messages are the same UI-safe texts as the website (for example
   "Only pending requests can be approved."); show them as-is.
 - Timestamps are ISO-8601 UTC strings. Event times come with the IANA `timezone`.
@@ -150,7 +151,9 @@ profile form; the current profile image is kept.
 ### `GET /me/registrations` (auth)
 
 Built from the same records as the account Registrations page
-(`loadAccountRegistrationRecords`: own RSVPs only, 50 upcoming and 50 past).
+(`loadAccountRegistrationRecords`: own RSVPs only, the first page of each
+section: 50 upcoming, 50 past and 50 certificates). The web page pages further
+with `?upcoming=`, `?past=` and `?certificates=`; this endpoint does not.
 
 ```json
 {
@@ -189,7 +192,11 @@ rate limit.
 
 Resolves an event short link with the same rule and per-IP limit as
 `/:shortCode` → `{ "orgSlug", "eventSlug" }`. Unknown, unreleased and
-rate-limited codes are the same `NOT_FOUND`.
+rate-limited codes are the same `NOT_FOUND`. Publishing an event releases its
+page in the same transaction, so a Live event's code resolves at once; clients
+should not cache a `NOT_FOUND` for long, because events published before that
+fix return it until the `20261021010000_realign_event_publication` migration
+runs.
 
 ### `GET /public/events/:orgSlug/:eventSlug`
 
@@ -228,6 +235,13 @@ With a valid bearer the signed-in flow applies (`guestEmail` is ignored and
 Success: `{ "rsvpId", "status": "CONFIRMED|WAITLISTED|PENDING_APPROVAL", "ticketToken|null" }`,
 with `ticketToken` only when `CONFIRMED`.
 
+Team events ([Team registration](TEAMS.md)): the app cannot create or join a
+team yet, so this endpoint always registers solo. That works when the event
+allows solo registrants (the registration counts as one unit against
+capacity); an event that registers teams only answers `TEAM_REQUIRED` (409).
+Send people to the event website to create a team or open a team join link.
+Any `team` field in the body is ignored.
+
 ### `GET /public/events/:orgSlug/:eventSlug/feedback`
 
 `{ "title", "intro": null, "thankYouMessage", "open": true, "certificatesEnabled", "fields": [RegistrationField] }`
@@ -256,12 +270,19 @@ without the needed permission is `FORBIDDEN`.
 derived exactly as the event dashboard does: `checkIn` = organisation
 OWNER/ADMIN or the event `CHECK_IN` grant; `schedule` = OWNER/ADMIN or
 `PUBLISH_AND_SCHEDULE`; `manageRegistrations`, `sendEmails`, `manageFeedback`
-and `manageRegistrationWindow` = organisation OWNER/ADMIN (the website's RSVP,
-email, feedback-settings and event-edit actions are admin-only). The flags only
-hide controls; every mutation is re-checked server-side.
+and `manageRegistrationWindow` = organisation OWNER/ADMIN (the website's email,
+feedback-settings and event-edit actions are admin-only). The shared RSVP cores
+also accept the event's `MANAGE_REGISTRATIONS` grant, as the web guest list
+does, but `manageRegistrations` stays admin-only in this contract version (see
+[Permissions](PERMISSIONS.md#mobile-api)). The flags only hide controls; every
+mutation is re-checked server-side.
 
-`EventCounts = { "confirmed", "waitlisted", "pending", "checkedIn", "capacity|null" }`,
+`EventCounts = { "confirmed", "waitlisted", "pending", "checkedIn", "capacity|null", "capacityUsed" }`,
 returned only when the caller has `manageRegistrations` or `checkIn`, else `null`.
+`capacityUsed` is what `capacity` is compared with: it equals `confirmed` on
+individual events, and on team events counts confirmed teams plus confirmed
+solo registrants (`confirmed` stays a count of people). Show
+`capacityUsed / capacity` for fill, not `confirmed / capacity`.
 
 ### `GET /orgs/:orgSlug/events?filter=upcoming|past|all`
 
@@ -288,6 +309,14 @@ ticket tokens.
 - `POST …/guests/:rsvpId/approve` · `…/reject` · `…/promote` → the updated
   `Guest`. Same rules, capacity transaction, emails and audit as `approveRsvp`
   / `rejectRsvp` / `promoteFromWaitlist` (organisation admins).
+- `POST …/guests/:rsvpId/reaccept` → the updated `Guest`. Reverses a decline
+  (as `reacceptRsvp`; organisation admins): only a `REJECTED` guest, and only
+  while the event is open. The guest becomes `CONFIRMED` when there is room
+  and `WAITLISTED` otherwise (check the returned `status`), with the approval
+  or waitlist email and a `RSVP_REACCEPTED` audit event. Any other status is
+  `CONFLICT` ("Only declined registrations can be re-accepted."). Older apps
+  that do not call it are unaffected; `approve` still accepts only pending
+  requests.
 - `POST …/guests` `{ "name", "email", "answers"? }` → `201` `Guest` (as `addManualRsvp`).
 - `DELETE …/guests/:rsvpId` → `{ "undoId" }` (as `deleteRsvp`; the undo lasts five minutes).
 - `POST …/guests/restore` `{ "undoId" }` → `null` (as `restoreRsvp`). `NOT_FOUND`
@@ -304,6 +333,8 @@ ticket tokens.
   waitlist override is possible (retry with `force: true`).
 - `POST …/check-in/undo` `{ "rsvpId" }` → `null`.
 - `GET …/check-in/lookup?q=` (min 2 chars, max 12 rows) → `{ "rows": [Guest] }`.
+  Matches guest names and emails and, on team events, team names (teams of the
+  same event only, listing their members). `Guest` has no team field yet.
 - `GET …/check-in/stats` → `{ "confirmed", "checkedIn", "recent": [{ "rsvpId", "displayName", "checkedInAt" }] }` (ten latest).
 - `GET …/check-in/roster` → `{ "generatedAt", "rows": [Guest & { "ticketToken", "checkInDetails", "registrationDetails" }] }`
   (as `downloadOfflineCheckInRoster`: confirmed, waitlisted and pending). Keep it

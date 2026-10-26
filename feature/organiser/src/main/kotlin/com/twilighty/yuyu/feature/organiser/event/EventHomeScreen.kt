@@ -253,7 +253,13 @@ private fun StatGrid(counts: EventCountsDto, accentColor: String?, columns: Int)
     val capacity = counts.capacity
     data class Stat(val label: String, val value: String, val progress: Float? = null, val hint: String? = null, val attention: Boolean = false)
     val stats = listOf(
-        Stat("Going", counts.confirmed.toString(), progress = capacity?.takeIf { it > 0 }?.let { counts.confirmed.toFloat() / it }),
+        // Fill compares capacityUsed (teams + solo places on team events) with capacity; "Going" stays people.
+        Stat(
+            "Going",
+            counts.confirmed.toString(),
+            progress = capacity?.takeIf { it > 0 }?.let { counts.placesTaken.toFloat() / it },
+            hint = if (counts.placesTaken != counts.confirmed) "${counts.placesTaken} places taken" else null,
+        ),
         Stat("Waitlist", counts.waitlisted.toString()),
         Stat("Pending approval", counts.pending.toString(), attention = counts.pending > 0, hint = if (counts.pending > 0) "Needs approval" else null),
         Stat(
@@ -265,7 +271,7 @@ private fun StatGrid(counts: EventCountsDto, accentColor: String?, columns: Int)
         Stat(
             "Capacity",
             capacity?.toString() ?: "No limit",
-            hint = capacity?.let { "${(it - counts.confirmed).coerceAtLeast(0)} places left" },
+            hint = capacity?.let { "${(it - counts.placesTaken).coerceAtLeast(0)} places left" },
         ),
     )
     EventAccentScope(accentColor) {

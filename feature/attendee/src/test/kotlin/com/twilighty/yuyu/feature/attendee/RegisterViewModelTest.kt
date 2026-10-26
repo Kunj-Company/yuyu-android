@@ -190,6 +190,19 @@ class RegisterViewModelTest {
     }
 
     @Test
+    fun teamsOnlyEventShowsFriendlyFormError() {
+        events.event = AppResult.Success(openEvent())
+        events.rsvp = { AppResult.Failure(AppError.TeamRequired()) }
+        val vm = viewModel()
+        vm.submit()
+        val s = vm.uiState.value
+        assertEquals(AppError.TeamRequired().message, s.formError)
+        assertTrue(s.errors.isEmpty())
+        assertNull(s.outcome)
+        assertFalse(s.submitting)
+    }
+
+    @Test
     fun alreadyRegisteredOrClosedBlocksTheForm() {
         events.event = AppResult.Success(Fixtures.publicEvent())
         assertEquals(RegisterCta.Registered("tkEXAMPLEownerTicketToken01"), viewModel().uiState.value.blocked)

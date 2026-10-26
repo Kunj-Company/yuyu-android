@@ -35,6 +35,11 @@ sealed interface AppError {
     /** 409 NEEDS_FORCE: a check-in status override is available. */
     data class NeedsForce(override val message: String) : AppError
 
+    /** 409 TEAM_REQUIRED: the event registers teams only, which the app can't do yet. */
+    data class TeamRequired(
+        override val message: String = "This event registers teams only. Register your team on the event's website.",
+    ) : AppError
+
     /** 429 RATE_LIMITED. [retryAfterSeconds] comes from the Retry-After header when present. */
     data class RateLimited(
         override val message: String = "Too many attempts. Try again shortly.",

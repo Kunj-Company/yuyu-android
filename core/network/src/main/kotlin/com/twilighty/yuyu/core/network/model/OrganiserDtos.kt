@@ -9,7 +9,17 @@ data class EventCountsDto(
     val pending: Int = 0,
     val checkedIn: Int = 0,
     val capacity: Int? = null,
-)
+    /**
+     * What [capacity] is compared with: equals [confirmed] on individual events;
+     * on team events, confirmed teams plus confirmed solo registrants, while
+     * [confirmed] stays a count of people. Required by the contract; null only
+     * from servers older than the field.
+     */
+    val capacityUsed: Int? = null,
+) {
+    /** Places taken against [capacity] (falls back to [confirmed] for older servers). */
+    val placesTaken: Int get() = capacityUsed ?: confirmed
+}
 
 /**
  * UI hints only: every mutation is re-checked on the server. [manageRegistrations],
