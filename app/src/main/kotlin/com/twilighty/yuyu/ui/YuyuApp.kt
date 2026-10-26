@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ConfirmationNumber
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -49,7 +50,10 @@ import com.twilighty.yuyu.core.designsystem.motion.YuyuSpecs
 import com.twilighty.yuyu.core.designsystem.motion.YuyuStateTransition
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
 import com.twilighty.yuyu.feature.attendee.navigation.AttendeeGraph
+import com.twilighty.yuyu.feature.attendee.navigation.ExploreGraph
+import com.twilighty.yuyu.feature.attendee.navigation.ExploreRoute
 import com.twilighty.yuyu.feature.attendee.navigation.MyTicketsRoute
+import com.twilighty.yuyu.feature.attendee.navigation.exploreGraph
 import com.twilighty.yuyu.feature.attendee.navigation.attendeeGraph
 import com.twilighty.yuyu.feature.attendee.navigation.navigateToDiscover
 import com.twilighty.yuyu.feature.attendee.navigation.navigateToEventDetail
@@ -80,6 +84,7 @@ import kotlinx.serialization.Serializable
 data object DesignGalleryRoute
 
 private enum class TopLevel(val label: String, val icon: ImageVector, val graph: Any) {
+    Explore("Explore", Icons.Outlined.Explore, ExploreGraph),
     Tickets("Tickets", Icons.Outlined.ConfirmationNumber, AttendeeGraph),
     Organise("Organise", Icons.Outlined.Groups, OrganiserGraph),
     Account("Account", Icons.Outlined.AccountCircle, AccountRoute),
@@ -199,13 +204,15 @@ private fun SignedInApp(state: AppUiState, viewModel: AppViewModel) {
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = AttendeeGraph,
+            // Explore first, as on iOS.
+            startDestination = ExploreGraph,
             modifier = Modifier.fillMaxSize().padding(padding),
             enterTransition = transitions.enter,
             exitTransition = transitions.exit,
             popEnterTransition = transitions.popEnter,
             popExitTransition = transitions.popExit,
         ) {
+            exploreGraph(navController)
             attendeeGraph(navController)
             organiserGraph(
                 navController,
@@ -232,7 +239,8 @@ private fun SignedInApp(state: AppUiState, viewModel: AppViewModel) {
 
 /** The bottom-bar tab roots; moving between them is a tab switch, not a push. */
 private fun isTopLevelDestination(destination: NavDestination): Boolean =
-    destination.hasRoute<MyTicketsRoute>() || destination.hasRoute<OrganiserHomeRoute>() || destination.hasRoute<AccountRoute>()
+    destination.hasRoute<ExploreRoute>() || destination.hasRoute<MyTicketsRoute>() ||
+        destination.hasRoute<OrganiserHomeRoute>() || destination.hasRoute<AccountRoute>()
 
 @Composable
 private fun YuyuBottomBar(tabs: List<TopLevel>, destination: NavDestination?, navController: NavHostController) {

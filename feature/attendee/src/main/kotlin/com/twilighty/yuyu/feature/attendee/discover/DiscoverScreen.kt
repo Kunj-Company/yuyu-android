@@ -46,7 +46,8 @@ import com.twilighty.yuyu.feature.attendee.common.listItemMotion
 
 @Composable
 internal fun DiscoverRoute(
-    onBack: () -> Unit,
+    /** Null on the Explore tab, where Discover is a root with no back arrow. */
+    onBack: (() -> Unit)?,
     onOpenEvent: (String, String) -> Unit,
     viewModel: DiscoverViewModel = hiltViewModel(),
 ) {
@@ -65,7 +66,7 @@ internal fun DiscoverRoute(
 @Composable
 internal fun DiscoverScreen(
     state: DiscoverUiState,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onRetry: () -> Unit,
@@ -73,7 +74,7 @@ internal fun DiscoverScreen(
     onOpenEvent: (String, String) -> Unit,
 ) {
     Scaffold(
-        topBar = { YuyuTopBar("Discover", onBack = onBack) },
+        topBar = { YuyuTopBar(if (onBack == null) "Explore" else "Discover", onBack = onBack) },
         containerColor = YuyuTheme.colors.bgCanvas,
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {

@@ -18,6 +18,14 @@ import kotlinx.serialization.Serializable
 @Serializable
 data object AttendeeGraph
 
+/** The Explore tab (bottom-nav, first): public events to discover and search. */
+@Serializable
+data object ExploreGraph
+
+/** Explore's root: the Discover list without a back arrow. */
+@Serializable
+data object ExploreRoute
+
 /** Home: my upcoming/past registrations + a "Discover" entry. */
 @Serializable
 data object MyTicketsRoute
@@ -107,6 +115,21 @@ fun NavGraphBuilder.attendeeGraph(navController: NavController) {
         }
         composable<FeedbackRoute> {
             FeedbackScreenRoute(onBack = navController::popBackStack)
+        }
+    }
+}
+
+/**
+ * The Explore tab. Event pages, registration and tickets opened from here are
+ * the attendee graph's screens, so Back returns to Explore.
+ */
+fun NavGraphBuilder.exploreGraph(navController: NavController) {
+    navigation<ExploreGraph>(startDestination = ExploreRoute) {
+        composable<ExploreRoute> {
+            DiscoverScreenRoute(
+                onBack = null,
+                onOpenEvent = { org, event -> navController.navigateToEventDetail(org, event) },
+            )
         }
     }
 }
