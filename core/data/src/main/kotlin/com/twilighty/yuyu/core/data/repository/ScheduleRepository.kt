@@ -20,6 +20,9 @@ data class SavedSchedule(
     val eventId: String,
     val eventTitle: String,
     val timezone: String,
+    /** Where the event happens (free text), for the venue line; halls are the programme's tracks. */
+    val location: String?,
+    val mapLinkUrl: String?,
     val canEditDelays: Boolean,
     val schedule: OrgScheduleDto,
     /** Server time of the copy, when the server sends it. */
@@ -68,6 +71,8 @@ class ScheduleRepositoryImpl @Inject constructor(
                     eventId = eventId,
                     eventTitle = event.event.title,
                     timezone = event.event.timezone,
+                    location = event.event.location?.takeIf { it.isNotBlank() },
+                    mapLinkUrl = event.event.mapLinkUrl,
                     canEditDelays = event.myPermissions.schedule,
                     scheduleJson = NetworkJson.encodeToString(OrgScheduleDto.serializer(), dto),
                     generatedAt = dto.generatedAt,
@@ -85,4 +90,4 @@ private fun CachedScheduleEntity.decodeOrNull(): SavedSchedule? =
     runCatching { NetworkJson.decodeFromString(OrgScheduleDto.serializer(), scheduleJson) }.getOrNull()?.let(::toSaved)
 
 private fun CachedScheduleEntity.toSaved(schedule: OrgScheduleDto) =
-    SavedSchedule(orgSlug, eventId, eventTitle, timezone, canEditDelays, schedule, generatedAt, syncedAt)
+    SavedSchedule(orgSlug, eventId, eventTitle, timezone, location, mapLinkUrl, canEditDelays, schedule, generatedAt, syncedAt)

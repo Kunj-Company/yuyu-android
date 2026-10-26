@@ -20,10 +20,10 @@ import com.twilighty.yuyu.core.database.entity.RosterRowEntity
  */
 @Database(
     entities = [CachedTicketEntity::class, RosterRowEntity::class, PendingCheckInEntity::class, CachedScheduleEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    // 2: cached_schedules (offline programme for organisers).
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    // 2: cached_schedules (offline programme for organisers). 3: its venue and map link.
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class YuyuDatabase : RoomDatabase() {
     abstract fun cachedTicketDao(): CachedTicketDao

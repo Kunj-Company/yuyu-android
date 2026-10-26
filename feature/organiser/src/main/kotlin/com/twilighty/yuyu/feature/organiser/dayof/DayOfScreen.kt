@@ -261,6 +261,7 @@ private fun TrackCard(track: TrackUi, tz: String, onSessionClick: (String) -> Un
                     onClick = { onSessionClick(item.session.id) },
                     onClickLabel = "Set a delay",
                     divider = index < track.sessions.lastIndex,
+                    hall = track.name,
                 )
             }
         }

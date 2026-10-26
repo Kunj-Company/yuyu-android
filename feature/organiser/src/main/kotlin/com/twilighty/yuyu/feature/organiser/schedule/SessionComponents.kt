@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.MeetingRoom
+import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,6 +63,8 @@ fun SessionRow(
     onClick: (() -> Unit)? = null,
     onClickLabel: String? = null,
     divider: Boolean = false,
+    /** The hall (programme track) the session runs in. */
+    hall: String? = null,
 ) {
     val c = YuyuTheme.colors
     val t = YuyuTheme.typography
@@ -92,6 +98,7 @@ fun SessionRow(
                     color = c.warningFg,
                 )
             }
+            if (!hall.isNullOrBlank()) HallLine(hall)
             SessionChips(item, status)
             if (s.speakers.isNotEmpty()) SpeakerList(s.speakers)
             when (status) {
@@ -125,6 +132,16 @@ private fun SessionChips(item: SessionUi, status: LiveStatus) {
     if (chips.isEmpty()) return
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         chips.forEach { it() }
+    }
+}
+
+/** "Main stage" with a room icon: where in the venue the session is. */
+@Composable
+fun HallLine(hall: String, modifier: Modifier = Modifier) {
+    val c = YuyuTheme.colors
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(Icons.Outlined.MeetingRoom, contentDescription = null, tint = c.textMuted, modifier = Modifier.size(16.dp))
+        Text(hall, style = YuyuTheme.typography.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -162,7 +179,7 @@ fun NowCard(tracked: TrackedSession, timezone: String, now: Instant, modifier: M
     YuyuCard(modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatusChip("Now", StatusTone.Success)
-            Text(tracked.trackName, style = t.caption, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            HallLine(tracked.trackName)
         }
         Text(item.session.title, style = t.h4, color = c.text, modifier = Modifier.padding(top = 8.dp))
         if (item.session.speakers.isNotEmpty()) {
