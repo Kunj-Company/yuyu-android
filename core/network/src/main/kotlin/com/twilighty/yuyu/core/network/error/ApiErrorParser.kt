@@ -57,6 +57,7 @@ object ApiErrorParser {
             ApiErrorCode.CONFLICT -> AppError.Conflict(message ?: "That changed in the meantime. Refresh and try again.")
             ApiErrorCode.NEEDS_FORCE -> AppError.NeedsForce(message ?: "This guest isn't confirmed. Check them in anyway?")
             ApiErrorCode.RATE_LIMITED -> AppError.RateLimited(message ?: "Too many attempts. Try again shortly.", retrySeconds)
+            ApiErrorCode.TEAM_REQUIRED -> message?.let { AppError.TeamRequired(it) } ?: AppError.TeamRequired()
             ApiErrorCode.INTERNAL_ERROR -> message?.let { AppError.Server(it) } ?: AppError.Server()
             else -> message?.let { AppError.Unknown(it) } ?: AppError.Unknown()
         }

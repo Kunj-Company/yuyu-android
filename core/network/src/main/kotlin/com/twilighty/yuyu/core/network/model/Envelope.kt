@@ -39,6 +39,7 @@ object ApiErrorCode {
     const val CONFLICT = "CONFLICT"
     const val NEEDS_FORCE = "NEEDS_FORCE"
     const val RATE_LIMITED = "RATE_LIMITED"
+    const val TEAM_REQUIRED = "TEAM_REQUIRED"
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }
 

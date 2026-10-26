@@ -62,14 +62,22 @@ fun EventCountsSummary(counts: EventCountsDto, accentColor: String?, modifier: M
         if (capacity != null && capacity > 0) {
             EventAccentScope(accentColor) {
                 YuyuProgressBar(
-                    progress = counts.confirmed.toFloat() / capacity,
+                    progress = counts.placesTaken.toFloat() / capacity,
                     height = 6.dp,
-                    modifier = Modifier.semantics { contentDescription = "${counts.confirmed} of $capacity places taken" },
+                    modifier = Modifier.semantics { contentDescription = "${counts.placesTaken} of $capacity places taken" },
                 )
             }
         }
         val parts = buildList {
-            add(if (capacity != null) "${counts.confirmed}/$capacity going" else "${counts.confirmed} going")
+            when {
+                capacity == null -> add("${counts.confirmed} going")
+                // Team events: places (teams + solo) differ from people going.
+                counts.placesTaken != counts.confirmed -> {
+                    add("${counts.confirmed} going")
+                    add("${counts.placesTaken}/$capacity places taken")
+                }
+                else -> add("${counts.confirmed}/$capacity going")
+            }
             if (counts.waitlisted > 0) add("${counts.waitlisted} waitlist")
             if (counts.pending > 0) add("${counts.pending} pending")
             add("${counts.checkedIn} checked in")

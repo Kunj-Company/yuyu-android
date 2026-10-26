@@ -198,6 +198,10 @@ class RegisterViewModel @Inject constructor(
 
     /** Maps the server's error onto the form: field errors by key, answer messages by question label. */
     internal fun applyServerError(s: RegisterUiState, error: AppError): RegisterUiState {
+        // Teams-only event: the app registers solo, so point people to the website.
+        if (error is AppError.TeamRequired) {
+            return s.copy(submitting = false, nameError = null, emailError = null, errors = emptyMap(), formError = error.message)
+        }
         val fieldErrors = (error as? AppError.InvalidRequest)?.fieldErrors.orEmpty()
         var nameError: String? = null
         var emailError: String? = null
