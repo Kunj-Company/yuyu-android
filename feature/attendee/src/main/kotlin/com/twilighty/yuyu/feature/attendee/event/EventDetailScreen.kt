@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.MeetingRoom
 import androidx.compose.material.icons.outlined.RateReview
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Videocam
@@ -361,7 +362,7 @@ private fun Schedule(data: PublicEventResponseDto, event: PublicEventDto, modifi
                 YuyuChip(track.trackName ?: "Programme", style = if (index == 0) YuyuChipStyle.Accent else YuyuChipStyle.Neutral)
             }
             track.sessions.forEach { session ->
-                SessionRow(session, event.timezone)
+                SessionRow(session, event.timezone, hall = track.trackName)
                 HorizontalDivider(color = c.border)
             }
         }
@@ -369,7 +370,7 @@ private fun Schedule(data: PublicEventResponseDto, event: PublicEventDto, modifi
 }
 
 @Composable
-private fun SessionRow(session: PublicSessionDto, timezone: String) {
+private fun SessionRow(session: PublicSessionDto, timezone: String, hall: String?) {
     val c = YuyuTheme.colors
     val start = EventTimeFormatter.parseInstant(session.startDateTime)
     val end = EventTimeFormatter.parseInstant(session.endDateTime)
@@ -385,6 +386,13 @@ private fun SessionRow(session: PublicSessionDto, timezone: String) {
             Text(session.title, style = YuyuTheme.typography.h4, color = c.text)
             if (session.speakers.isNotEmpty()) {
                 Text(session.speakers.joinToString(", "), style = YuyuTheme.typography.bodyUi, color = c.textSecondary)
+            }
+            // The hall: the session's own room when the server sends one, else its programme track.
+            (session.room ?: hall)?.takeIf { it.isNotBlank() }?.let { place ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Outlined.MeetingRoom, contentDescription = null, tint = c.textMuted, modifier = Modifier.size(16.dp))
+                    Text(place, style = YuyuTheme.typography.caption, color = c.textSecondary)
+                }
             }
             AnimatedReveal(session.delayMinutes > 0) {
                 StatusChip(delayLabel(session.delayMinutes), StatusTone.Warning)

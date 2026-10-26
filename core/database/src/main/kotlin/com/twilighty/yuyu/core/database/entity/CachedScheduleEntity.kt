@@ -15,6 +15,9 @@ data class CachedScheduleEntity(
     val eventId: String,
     val eventTitle: String,
     val timezone: String,
+    /** The event's venue (free text) and map link, shown with the programme. */
+    val location: String? = null,
+    val mapLinkUrl: String? = null,
     /** Whether this organiser could set live delays when the copy was saved. */
     val canEditDelays: Boolean,
     val scheduleJson: String,

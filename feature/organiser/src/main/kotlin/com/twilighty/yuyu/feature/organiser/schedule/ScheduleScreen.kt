@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -47,6 +50,7 @@ import com.twilighty.yuyu.core.designsystem.component.YuyuIconButton
 import com.twilighty.yuyu.core.designsystem.component.YuyuSnackbarHost
 import com.twilighty.yuyu.core.designsystem.component.YuyuTopBar
 import com.twilighty.yuyu.core.designsystem.theme.YuyuTheme
+import com.twilighty.yuyu.core.designsystem.util.openInBrowser
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.flow.filterNotNull
@@ -117,6 +121,7 @@ private fun ScheduleContent(state: ScheduleUiState, onOpenDayOf: () -> Unit) {
         item(key = "header") {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(saved.eventTitle, style = t.h3, color = c.text, modifier = Modifier.semantics { heading() })
+                saved.location?.let { VenueLine(it, saved.mapLinkUrl) }
                 SyncStatus(state, now)
             }
         }
@@ -148,15 +153,7 @@ private fun ScheduleContent(state: ScheduleUiState, onOpenDayOf: () -> Unit) {
                     SectionHeader("Up next")
                     YuyuCard(contentPadding = PaddingValues(0.dp)) {
                         summary.next.forEachIndexed { index, next ->
-                            Column {
-                                Text(
-                                    next.trackName,
-                                    style = t.caption,
-                                    color = c.textMuted,
-                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
-                                )
-                                SessionRow(next.item, tz, now, divider = index < summary.next.lastIndex)
-                            }
+                            SessionRow(next.item, tz, now, divider = index < summary.next.lastIndex, hall = next.trackName)
                         }
                     }
                 }
@@ -188,9 +185,27 @@ private fun TrackSection(track: TrackUi, tz: String, now: Instant) {
                         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
                     )
                 }
-                SessionRow(item, tz, now, divider = index < track.sessions.lastIndex)
+                SessionRow(item, tz, now, divider = index < track.sessions.lastIndex, hall = track.name)
             }
         }
+    }
+}
+
+/** The event's venue; opens the map link when there is one. */
+@Composable
+private fun VenueLine(location: String, mapLinkUrl: String?) {
+    val c = YuyuTheme.colors
+    val context = LocalContext.current
+    Row(
+        Modifier
+            .then(if (mapLinkUrl != null) Modifier.clickable(onClickLabel = "Open map") { openInBrowser(context, mapLinkUrl) } else Modifier)
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(Icons.Outlined.Place, contentDescription = null, tint = c.textMuted, modifier = Modifier.size(18.dp))
+        Text(location, style = YuyuTheme.typography.bodyUi, color = c.textSecondary)
+        if (mapLinkUrl != null) Text("Map", style = YuyuTheme.typography.label, color = c.text)
     }
 }
 
