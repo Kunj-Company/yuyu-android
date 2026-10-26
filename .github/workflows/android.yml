@@ -284,18 +284,13 @@ jobs:
             echo "Built by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           } > notes.md
 
+          # Recreate rather than edit, so the release page shows when this build
+          # was published (an edited release keeps its first publish date). The
+          # tag stays; the download is briefly unavailable between the two calls.
           if gh release view latest > /dev/null 2>&1; then
-            gh release edit latest --title "$title" --notes-file notes.md --prerelease --latest=false
-            gh release upload latest dist/* --clobber
-            # Drop assets from older builds (file names carry the version).
-            for asset in $(gh release view latest --json assets --jq '.assets[].name'); do
-              if [ ! -e "dist/$asset" ]; then
-                gh release delete-asset latest "$asset" --yes
-              fi
-            done
-          else
-            gh release create latest dist/* --verify-tag --title "$title" --notes-file notes.md --prerelease --latest=false
+            gh release delete latest --yes
           fi
+          gh release create latest dist/* --verify-tag --title "$title" --notes-file notes.md --prerelease --latest=false
           gh release view latest --json url,assets --jq '.url, .assets[].name'
 
   release:
