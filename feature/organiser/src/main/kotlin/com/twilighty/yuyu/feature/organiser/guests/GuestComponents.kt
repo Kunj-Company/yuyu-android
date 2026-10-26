@@ -10,16 +10,13 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -30,15 +27,10 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.HowToReg
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,7 +38,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
@@ -82,7 +73,6 @@ import com.twilighty.yuyu.feature.organiser.common.RsvpStatus
 import com.twilighty.yuyu.feature.organiser.common.rememberChangeFlash
 import com.twilighty.yuyu.feature.organiser.common.checkedInLabel
 import com.twilighty.yuyu.feature.organiser.common.guestStatusLabel
-import kotlinx.coroutines.launch
 
 @Composable
 fun GuestStatusChip(status: String, modifier: Modifier = Modifier) {
@@ -92,8 +82,7 @@ fun GuestStatusChip(status: String, modifier: Modifier = Modifier) {
 
 /**
  * One guest in the list. Lifecycle controls appear only when [actions] allow
- * them (never for check-in-only helpers). Pending and waitlisted rows can also
- * be swiped: right to approve / give a spot, left to decline.
+ * them (never for check-in-only helpers), as buttons on the row.
  */
 @Composable
 fun GuestRow(
@@ -108,73 +97,6 @@ fun GuestRow(
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
-) {
-    val swipeable = (actions.approveDecline || actions.promote) && !busy
-    if (!swipeable) {
-        GuestRowContent(guest, timezone, actions, busy, selected, onClick, onApprove, onDecline, onPromote, onRemove, modifier)
-        return
-    }
-    val approve by rememberUpdatedState(if (actions.approveDecline) onApprove else onPromote)
-    val decline by rememberUpdatedState(onDecline)
-    val canDecline = actions.approveDecline
-    val swipe = rememberSwipeToDismissBoxState()
-    val scope = rememberCoroutineScope()
-    SwipeToDismissBox(
-        state = swipe,
-        modifier = modifier,
-        enableDismissFromEndToStart = canDecline,
-        onDismiss = { value ->
-            when (value) {
-                SwipeToDismissBoxValue.StartToEnd -> approve()
-                SwipeToDismissBoxValue.EndToStart -> if (canDecline) decline()
-                SwipeToDismissBoxValue.Settled -> Unit
-            }
-            // Snap back: the row stays and shows its new status optimistically.
-            scope.launch { swipe.reset() }
-        },
-        backgroundContent = {
-            val c = YuyuTheme.colors
-            val direction = swipe.dismissDirection
-            val toStart = direction == SwipeToDismissBoxValue.EndToStart
-            if (direction == SwipeToDismissBoxValue.Settled) return@SwipeToDismissBox
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    // Decorative: the same actions are buttons and accessibility actions on the row.
-                    .clearAndSetSemantics { }
-                    .background(if (toStart) c.dangerBg else c.successBg)
-                    .padding(horizontal = 20.dp),
-                contentAlignment = if (toStart) Alignment.CenterEnd else Alignment.CenterStart,
-            ) {
-                Text(
-                    when {
-                        toStart -> "Decline"
-                        actions.approveDecline -> "Approve"
-                        else -> "Give a spot"
-                    },
-                    style = YuyuTheme.typography.label,
-                    color = if (toStart) c.dangerFg else c.successFg,
-                )
-            }
-        },
-    ) {
-        GuestRowContent(guest, timezone, actions, busy, selected, onClick, onApprove, onDecline, onPromote, onRemove)
-    }
-}
-
-@Composable
-private fun GuestRowContent(
-    guest: GuestDto,
-    timezone: String,
-    actions: GuestRowActions,
-    busy: Boolean,
-    selected: Boolean,
-    onClick: () -> Unit,
-    onApprove: () -> Unit,
-    onDecline: () -> Unit,
-    onPromote: () -> Unit,
-    onRemove: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val c = YuyuTheme.colors
     val t = YuyuTheme.typography
