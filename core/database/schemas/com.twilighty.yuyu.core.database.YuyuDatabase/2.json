@@ -1,0 +1,412 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "2023e31e63a84309fb0083dccf1c4aef",
+    "entities": [
+      {
+        "tableName": "cached_tickets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`rsvpId` TEXT NOT NULL, `status` TEXT NOT NULL, `checkedInAt` TEXT, `registeredAt` TEXT NOT NULL, `canCancel` INTEGER NOT NULL, `encryptedTicketToken` TEXT, `isUpcoming` INTEGER NOT NULL, `eventId` TEXT NOT NULL, `eventSlug` TEXT NOT NULL, `eventTitle` TEXT NOT NULL, `coverImageUrl` TEXT, `startDateTime` TEXT NOT NULL, `endDateTime` TEXT, `timezone` TEXT NOT NULL, `location` TEXT, `mapLinkUrl` TEXT, `isOnline` INTEGER NOT NULL, `accentColor` TEXT, `eventStatus` TEXT, `orgSlug` TEXT NOT NULL, `orgName` TEXT NOT NULL, `orgLogoUrl` TEXT, `instanceId` TEXT, `cachedAt` INTEGER NOT NULL, PRIMARY KEY(`rsvpId`))",
+        "fields": [
+          {
+            "fieldPath": "rsvpId",
+            "columnName": "rsvpId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "checkedInAt",
+            "columnName": "checkedInAt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "registeredAt",
+            "columnName": "registeredAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "canCancel",
+            "columnName": "canCancel",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "encryptedTicketToken",
+            "columnName": "encryptedTicketToken",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isUpcoming",
+            "columnName": "isUpcoming",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventSlug",
+            "columnName": "eventSlug",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventTitle",
+            "columnName": "eventTitle",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coverImageUrl",
+            "columnName": "coverImageUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "startDateTime",
+            "columnName": "startDateTime",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endDateTime",
+            "columnName": "endDateTime",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "timezone",
+            "columnName": "timezone",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "location",
+            "columnName": "location",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "mapLinkUrl",
+            "columnName": "mapLinkUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isOnline",
+            "columnName": "isOnline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accentColor",
+            "columnName": "accentColor",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "eventStatus",
+            "columnName": "eventStatus",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "orgSlug",
+            "columnName": "orgSlug",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orgName",
+            "columnName": "orgName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orgLogoUrl",
+            "columnName": "orgLogoUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "instanceId",
+            "columnName": "instanceId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cachedAt",
+            "columnName": "cachedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "rsvpId"
+          ]
+        }
+      },
+      {
+        "tableName": "roster_rows",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`eventId` TEXT NOT NULL, `rsvpId` TEXT NOT NULL, `orgSlug` TEXT NOT NULL, `displayName` TEXT NOT NULL, `email` TEXT, `status` TEXT NOT NULL, `checkedInAt` TEXT, `registeredAt` TEXT NOT NULL, `isGuest` INTEGER NOT NULL, `ticketTokenSha256` TEXT, `checkInDetailsJson` TEXT NOT NULL, `registrationDetailsJson` TEXT NOT NULL, `generatedAt` TEXT NOT NULL, PRIMARY KEY(`eventId`, `rsvpId`))",
+        "fields": [
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rsvpId",
+            "columnName": "rsvpId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orgSlug",
+            "columnName": "orgSlug",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "email",
+            "columnName": "email",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "checkedInAt",
+            "columnName": "checkedInAt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "registeredAt",
+            "columnName": "registeredAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isGuest",
+            "columnName": "isGuest",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ticketTokenSha256",
+            "columnName": "ticketTokenSha256",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "checkInDetailsJson",
+            "columnName": "checkInDetailsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "registrationDetailsJson",
+            "columnName": "registrationDetailsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generatedAt",
+            "columnName": "generatedAt",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "eventId",
+            "rsvpId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_roster_rows_eventId_ticketTokenSha256",
+            "unique": false,
+            "columnNames": [
+              "eventId",
+              "ticketTokenSha256"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_roster_rows_eventId_ticketTokenSha256` ON `${TABLE_NAME}` (`eventId`, `ticketTokenSha256`)"
+          },
+          {
+            "name": "index_roster_rows_eventId_displayName",
+            "unique": false,
+            "columnNames": [
+              "eventId",
+              "displayName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_roster_rows_eventId_displayName` ON `${TABLE_NAME}` (`eventId`, `displayName`)"
+          }
+        ]
+      },
+      {
+        "tableName": "pending_check_ins",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `orgSlug` TEXT NOT NULL, `eventId` TEXT NOT NULL, `rsvpId` TEXT NOT NULL, `checkedInAt` TEXT NOT NULL, `force` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `clientMutationId` TEXT NOT NULL, `attempts` INTEGER NOT NULL, `lastError` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orgSlug",
+            "columnName": "orgSlug",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rsvpId",
+            "columnName": "rsvpId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "checkedInAt",
+            "columnName": "checkedInAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "force",
+            "columnName": "force",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clientMutationId",
+            "columnName": "clientMutationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_pending_check_ins_eventId_rsvpId",
+            "unique": true,
+            "columnNames": [
+              "eventId",
+              "rsvpId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_pending_check_ins_eventId_rsvpId` ON `${TABLE_NAME}` (`eventId`, `rsvpId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "cached_schedules",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`orgSlug` TEXT NOT NULL, `eventId` TEXT NOT NULL, `eventTitle` TEXT NOT NULL, `timezone` TEXT NOT NULL, `canEditDelays` INTEGER NOT NULL, `scheduleJson` TEXT NOT NULL, `generatedAt` TEXT, `syncedAt` INTEGER NOT NULL, PRIMARY KEY(`orgSlug`, `eventId`))",
+        "fields": [
+          {
+            "fieldPath": "orgSlug",
+            "columnName": "orgSlug",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventTitle",
+            "columnName": "eventTitle",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timezone",
+            "columnName": "timezone",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "canEditDelays",
+            "columnName": "canEditDelays",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scheduleJson",
+            "columnName": "scheduleJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generatedAt",
+            "columnName": "generatedAt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "syncedAt",
+            "columnName": "syncedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "orgSlug",
+            "eventId"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2023e31e63a84309fb0083dccf1c4aef')"
+    ]
+  }
+}

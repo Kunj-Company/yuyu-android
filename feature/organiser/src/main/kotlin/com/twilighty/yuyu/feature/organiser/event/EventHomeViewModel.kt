@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.twilighty.yuyu.core.common.result.AppResult
 import com.twilighty.yuyu.core.data.repository.OrganiserEventsRepository
+import com.twilighty.yuyu.core.data.repository.ScheduleRepository
 import com.twilighty.yuyu.core.network.model.OrgEventDetailResponseDto
 import com.twilighty.yuyu.feature.organiser.common.WebLinks
 import com.twilighty.yuyu.feature.organiser.common.canSeeGuests
@@ -22,6 +23,8 @@ data class EventActions(
     val guests: Boolean = false,
     val emails: Boolean = false,
     val dayOf: Boolean = false,
+    /** Every organiser who can open the event reads the programme. */
+    val schedule: Boolean = false,
 )
 
 data class EventHomeUiState(
@@ -29,10 +32,12 @@ data class EventHomeUiState(
     val refreshing: Boolean = false,
     val detail: OrgEventDetailResponseDto? = null,
     val error: String? = null,
+    /** A programme saved on this device, offered when the event can't load (offline). */
+    val hasSavedSchedule: Boolean = false,
 ) {
     val actions: EventActions
         get() = detail?.myPermissions?.let {
-            EventActions(checkIn = it.checkIn, guests = it.canSeeGuests, emails = it.sendEmails, dayOf = it.hasDayOfControls)
+            EventActions(checkIn = it.checkIn, guests = it.canSeeGuests, emails = it.sendEmails, dayOf = it.hasDayOfControls, schedule = true)
         } ?: EventActions()
 }
 
@@ -40,6 +45,7 @@ data class EventHomeUiState(
 class EventHomeViewModel @Inject constructor(
     private val repository: OrganiserEventsRepository,
     private val webLinks: WebLinks,
+    private val schedules: ScheduleRepository,
 ) : ViewModel() {
     private val state = MutableStateFlow(EventHomeUiState())
     val uiState: StateFlow<EventHomeUiState> = state.asStateFlow()
@@ -51,6 +57,9 @@ class EventHomeViewModel @Inject constructor(
         if (this.orgSlug == orgSlug && this.eventId == eventId) return
         this.orgSlug = orgSlug
         this.eventId = eventId
+        viewModelScope.launch {
+            schedules.observe(orgSlug, eventId).collect { saved -> state.update { it.copy(hasSavedSchedule = saved != null) } }
+        }
         load(refreshing = false)
     }
 

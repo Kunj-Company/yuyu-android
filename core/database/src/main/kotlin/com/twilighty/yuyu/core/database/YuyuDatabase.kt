@@ -1,10 +1,13 @@
 package com.twilighty.yuyu.core.database
 
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import com.twilighty.yuyu.core.database.dao.CachedScheduleDao
 import com.twilighty.yuyu.core.database.dao.CachedTicketDao
 import com.twilighty.yuyu.core.database.dao.PendingCheckInDao
 import com.twilighty.yuyu.core.database.dao.RosterDao
+import com.twilighty.yuyu.core.database.entity.CachedScheduleEntity
 import com.twilighty.yuyu.core.database.entity.CachedTicketEntity
 import com.twilighty.yuyu.core.database.entity.PendingCheckInEntity
 import com.twilighty.yuyu.core.database.entity.RosterRowEntity
@@ -16,14 +19,17 @@ import com.twilighty.yuyu.core.database.entity.RosterRowEntity
  * sign-out and when switching servers.
  */
 @Database(
-    entities = [CachedTicketEntity::class, RosterRowEntity::class, PendingCheckInEntity::class],
-    version = 1,
+    entities = [CachedTicketEntity::class, RosterRowEntity::class, PendingCheckInEntity::class, CachedScheduleEntity::class],
+    version = 2,
     exportSchema = true,
+    // 2: cached_schedules (offline programme for organisers).
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class YuyuDatabase : RoomDatabase() {
     abstract fun cachedTicketDao(): CachedTicketDao
     abstract fun rosterDao(): RosterDao
     abstract fun pendingCheckInDao(): PendingCheckInDao
+    abstract fun cachedScheduleDao(): CachedScheduleDao
 
     companion object {
         const val NAME = "yuyu.db"

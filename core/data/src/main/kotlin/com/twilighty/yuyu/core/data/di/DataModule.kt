@@ -24,6 +24,8 @@ import com.twilighty.yuyu.core.data.repository.OrganiserEventsRepository
 import com.twilighty.yuyu.core.data.repository.OrganiserEventsRepositoryImpl
 import com.twilighty.yuyu.core.data.repository.PublicEventsRepository
 import com.twilighty.yuyu.core.data.repository.PublicEventsRepositoryImpl
+import com.twilighty.yuyu.core.data.repository.ScheduleRepository
+import com.twilighty.yuyu.core.data.repository.ScheduleRepositoryImpl
 import com.twilighty.yuyu.core.data.repository.StationRepository
 import com.twilighty.yuyu.core.data.repository.StationRepositoryImpl
 import com.twilighty.yuyu.core.data.server.ServerStore
@@ -84,4 +86,5 @@ abstract class DataBindsModule {
     @Binds abstract fun bindsStationRepository(impl: StationRepositoryImpl): StationRepository
     @Binds abstract fun bindsBroadcastsRepository(impl: BroadcastsRepositoryImpl): BroadcastsRepository
     @Binds abstract fun bindsDayOfRepository(impl: DayOfRepositoryImpl): DayOfRepository
+    @Binds abstract fun bindsScheduleRepository(impl: ScheduleRepositoryImpl): ScheduleRepository
 }

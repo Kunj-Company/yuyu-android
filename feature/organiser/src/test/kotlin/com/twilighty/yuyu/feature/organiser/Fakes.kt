@@ -1,5 +1,6 @@
 package com.twilighty.yuyu.feature.organiser
 
+import com.twilighty.yuyu.core.common.result.AppError
 import com.twilighty.yuyu.core.common.result.AppResult
 import com.twilighty.yuyu.core.data.repository.CachedRegistrations
 import com.twilighty.yuyu.core.data.repository.DayOfRepository
@@ -7,6 +8,8 @@ import com.twilighty.yuyu.core.data.repository.GuestQuery
 import com.twilighty.yuyu.core.data.repository.GuestsRepository
 import com.twilighty.yuyu.core.data.repository.MeRepository
 import com.twilighty.yuyu.core.data.repository.OrganiserEventsRepository
+import com.twilighty.yuyu.core.data.repository.SavedSchedule
+import com.twilighty.yuyu.core.data.repository.ScheduleRepository
 import com.twilighty.yuyu.core.network.model.EventCountsDto
 import com.twilighty.yuyu.core.network.model.EventPermissionsDto
 import com.twilighty.yuyu.core.network.model.GuestDetailDto
@@ -30,6 +33,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.map
 
 val AllPermissions = EventPermissionsDto(
     checkIn = true,
@@ -195,3 +199,27 @@ class FakeDayOfRepository : DayOfRepository {
         return registrationResult(open)
     }
 }
+
+class FakeScheduleRepository : ScheduleRepository {
+    val saved = MutableStateFlow<SavedSchedule?>(null)
+    var syncResult: () -> AppResult<SavedSchedule> = { AppResult.Failure(AppError.Network()) }
+    var syncCalls = 0
+
+    override fun observe(orgSlug: String, eventId: String): Flow<SavedSchedule?> = saved
+    override fun observeAll(): Flow<List<SavedSchedule>> = saved.map(::listOfNotNull)
+    override suspend fun sync(orgSlug: String, eventId: String): AppResult<SavedSchedule> {
+        syncCalls++
+        return syncResult().also { if (it is AppResult.Success) saved.value = it.data }
+    }
+}
+
+fun savedSchedule(schedule: OrgScheduleDto = OrgScheduleDto(), canEditDelays: Boolean = false, syncedAt: Long = 0) = SavedSchedule(
+    orgSlug = "civic-tech",
+    eventId = "e1",
+    eventTitle = "Event e1",
+    timezone = "Europe/London",
+    canEditDelays = canEditDelays,
+    schedule = schedule,
+    generatedAt = null,
+    syncedAt = syncedAt,
+)

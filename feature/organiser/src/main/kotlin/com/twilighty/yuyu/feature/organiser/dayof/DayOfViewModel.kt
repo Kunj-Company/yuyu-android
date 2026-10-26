@@ -4,13 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.twilighty.yuyu.core.common.result.AppError
 import com.twilighty.yuyu.core.common.result.AppResult
-import com.twilighty.yuyu.core.common.time.EventTimeFormatter
 import com.twilighty.yuyu.core.data.repository.DayOfRepository
 import com.twilighty.yuyu.core.data.repository.OrganiserEventsRepository
 import com.twilighty.yuyu.core.network.model.EventPermissionsDto
 import com.twilighty.yuyu.core.network.model.OrgScheduleDto
-import com.twilighty.yuyu.core.network.model.OrgSessionDto
 import com.twilighty.yuyu.core.network.model.RegistrationStateDto
+import com.twilighty.yuyu.feature.organiser.schedule.TrackUi
+import com.twilighty.yuyu.feature.organiser.schedule.toTrackUi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.async
@@ -21,34 +21,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 const val MAX_DELAY_MINUTES = 1440
-
-/** A session with how far earlier delays in its track push it back (the web's "min behind"). */
-data class SessionUi(
-    val session: OrgSessionDto,
-    /** Sum of the delays of earlier sessions in the same track; this session's own delay shifts only later ones. */
-    val shiftMinutes: Int,
-)
-
-data class TrackUi(val id: String?, val name: String, val sessions: List<SessionUi>)
-
-/**
- * Mirrors the website's `effectiveEventProgram`: planned times never change; a
- * session's delay is added to every later session in the same track, and
- * delays add up down the track.
- */
-internal fun OrgScheduleDto.toTrackUi(): List<TrackUi> = tracks.map { track ->
-    var running = 0
-    val sorted = track.sessions.withIndex().sortedWith(
-        compareBy({ EventTimeFormatter.parseInstant(it.value.startDateTime)?.toEpochMilli() ?: Long.MAX_VALUE }, { it.index }),
-    ).map { it.value }
-    TrackUi(
-        id = track.id,
-        name = track.name,
-        sessions = sorted.map { session ->
-            SessionUi(session, running).also { running += session.delayMinutes }
-        },
-    )
-}
 
 sealed interface DelayInput {
     data class Valid(val minutes: Int) : DelayInput

@@ -2,8 +2,16 @@ package com.twilighty.yuyu.core.network.model
 
 import kotlinx.serialization.Serializable
 
+/**
+ * `GET …/schedule`: every organiser of the event can read it. [generatedAt] and
+ * the session fields after `delayMinutes` are absent on servers older than the
+ * speakers change.
+ */
 @Serializable
-data class OrgScheduleDto(val tracks: List<OrgTrackDto> = emptyList())
+data class OrgScheduleDto(
+    val tracks: List<OrgTrackDto> = emptyList(),
+    val generatedAt: String? = null,
+)
 
 @Serializable
 data class OrgTrackDto(
@@ -18,7 +26,24 @@ data class OrgSessionDto(
     val title: String,
     val startDateTime: String,
     val endDateTime: String? = null,
+    /** This session's own stored delay; it shifts only later sessions in the track. */
     val delayMinutes: Int = 0,
+    val type: String? = null,
+    /** DRAFT, PUBLISHED or HIDDEN. */
+    val visibility: String? = null,
+    /** Planned times shifted by earlier delays in the track, computed by the server. */
+    val effectiveStartDateTime: String? = null,
+    val effectiveEndDateTime: String? = null,
+    val speakers: List<ScheduleSpeakerDto> = emptyList(),
+)
+
+@Serializable
+data class ScheduleSpeakerDto(
+    val id: String,
+    val name: String,
+    val headline: String? = null,
+    val organisation: String? = null,
+    val photoUrl: String? = null,
 )
 
 /** 0..1440 minutes. */

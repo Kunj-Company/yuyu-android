@@ -15,6 +15,7 @@ import com.twilighty.yuyu.feature.organiser.guests.GuestDetailScreen
 import com.twilighty.yuyu.feature.organiser.guests.GuestsScreen
 import com.twilighty.yuyu.feature.organiser.guests.GuestsViewModel
 import com.twilighty.yuyu.feature.organiser.home.OrganiserHomeScreen
+import com.twilighty.yuyu.feature.organiser.schedule.ScheduleScreen
 import kotlinx.serialization.Serializable
 
 /** The organiser nested graph (bottom-nav "Organise" tab). */
@@ -39,6 +40,10 @@ data class GuestDetailRoute(val orgSlug: String, val eventId: String, val rsvpId
 @Serializable
 data class DayOfRoute(val orgSlug: String, val eventId: String)
 
+/** The programme with speakers and live countdowns, saved for offline use. Any organiser of the event. */
+@Serializable
+data class ScheduleRoute(val orgSlug: String, val eventId: String)
+
 /**
  * Cross-feature exits, wired by `:app` so feature modules never depend on each other.
  * Call these instead of navigating to another module's routes directly.
@@ -56,6 +61,7 @@ fun NavController.navigateToGuests(orgSlug: String, eventId: String) = navigate(
 fun NavController.navigateToGuestDetail(orgSlug: String, eventId: String, rsvpId: String) =
     navigate(GuestDetailRoute(orgSlug, eventId, rsvpId))
 fun NavController.navigateToDayOf(orgSlug: String, eventId: String) = navigate(DayOfRoute(orgSlug, eventId))
+fun NavController.navigateToSchedule(orgSlug: String, eventId: String) = navigate(ScheduleRoute(orgSlug, eventId))
 
 private const val KEY_GUEST_CHANGED = "organiser.guestChanged"
 private const val KEY_REMOVED_RSVP = "organiser.removedRsvp"
@@ -82,6 +88,7 @@ fun NavGraphBuilder.organiserGraph(navController: NavController, external: Organ
                 onOpenGuests = { navController.navigateToGuests(route.orgSlug, route.eventId) },
                 onOpenEmails = { external.openBroadcastCompose(route.orgSlug, route.eventId) },
                 onOpenDayOf = { navController.navigateToDayOf(route.orgSlug, route.eventId) },
+                onOpenSchedule = { navController.navigateToSchedule(route.orgSlug, route.eventId) },
             )
         }
         composable<GuestsRoute> { entry ->
@@ -136,6 +143,15 @@ fun NavGraphBuilder.organiserGraph(navController: NavController, external: Organ
         composable<DayOfRoute> { entry ->
             val route = entry.toRoute<DayOfRoute>()
             DayOfScreen(orgSlug = route.orgSlug, eventId = route.eventId, onBack = navController::popBackStack)
+        }
+        composable<ScheduleRoute> { entry ->
+            val route = entry.toRoute<ScheduleRoute>()
+            ScheduleScreen(
+                orgSlug = route.orgSlug,
+                eventId = route.eventId,
+                onBack = navController::popBackStack,
+                onOpenDayOf = { navController.navigateToDayOf(route.orgSlug, route.eventId) },
+            )
         }
     }
 }

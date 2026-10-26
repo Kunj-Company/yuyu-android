@@ -9,6 +9,7 @@ import com.twilighty.yuyu.core.network.model.GuestPageDto
 import com.twilighty.yuyu.core.network.model.MeDto
 import com.twilighty.yuyu.core.network.model.OrgEventDetailResponseDto
 import com.twilighty.yuyu.core.network.model.OrgEventsDto
+import com.twilighty.yuyu.core.network.model.OrgScheduleDto
 import com.twilighty.yuyu.core.network.model.RegistrationStateDto
 import com.twilighty.yuyu.core.network.model.PublicEventResponseDto
 import com.twilighty.yuyu.core.network.model.RegistrationsDto
@@ -47,6 +48,7 @@ class FixtureContractTest {
         "org-event-detail.json" to ApiEnvelope.serializer(OrgEventDetailResponseDto.serializer()),
         "registration-state.json" to ApiEnvelope.serializer(RegistrationStateDto.serializer()),
         "public-event.json" to ApiEnvelope.serializer(PublicEventResponseDto.serializer()),
+        "schedule.json" to ApiEnvelope.serializer(OrgScheduleDto.serializer()),
         "registrations.json" to ApiEnvelope.serializer(RegistrationsDto.serializer()),
         "session.json" to ApiEnvelope.serializer(SessionDto.serializer()),
     )
