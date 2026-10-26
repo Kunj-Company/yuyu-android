@@ -43,8 +43,9 @@ Open the repository's **Releases** page
 (`https://github.com/twilighty-abhi/yuyu-android/releases`):
 
 - **`latest`** (marked pre-release): the newest build of `main`, replaced on
-  every push to `main`. Its title shows the commit, and its notes say whether it
-  is signed with the release key.
+  every push to `main` (recreated each time, so its date is the build's). Its
+  title shows the commit, and its notes say whether it is signed with the
+  release key.
 - **`vX.Y.Z`**: a versioned release, always signed with the release key.
 
 Download `yuyu-…-release.apk`. Workflow artifacts from any run (including
